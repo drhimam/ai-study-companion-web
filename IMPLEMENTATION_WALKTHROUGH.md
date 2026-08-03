@@ -102,4 +102,12 @@ During implementation, the following obstacles were encountered and resolved:
   - Updated [SettingsModal.tsx](file:///d:/antigravity/ai-study-companion-web/src/components/SettingsModal.tsx) to feature a Managed AI Gateway badge and streamline UI options.
 - **Verification**: Verified clean build with `npm run build` (3.65s).
 
+### Phase 3: Database & Cloudflare Worker Deployment Setup (Completed)
+- **Actions Completed**:
+  - Created [.env.example](file:///d:/antigravity/ai-study-companion-web/.env.example) detailing frontend environment variables and Cloudflare Worker secrets.
+  - Formulated step-by-step deployment guide for executing [better_auth_neon_schema.sql](file:///d:/antigravity/ai-study-companion-web/supabase/migrations/better_auth_neon_schema.sql) on Neon PostgreSQL.
+  - Documented secret setup commands (`wrangler secret put DATABASE_URL`, `wrangler secret put BETTER_AUTH_SECRET`, `wrangler secret put AI_API_KEY`) and deployment command (`npx wrangler deploy`).
+- **Verification**: Codebase prepared and validated for edge worker & serverless database deployment.
+
 *(Future phases will be appended here after completing each step, testing, and committing to Git).*
+
