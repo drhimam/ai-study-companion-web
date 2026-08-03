@@ -109,5 +109,17 @@ During implementation, the following obstacles were encountered and resolved:
   - Documented secret setup commands (`wrangler secret put DATABASE_URL`, `wrangler secret put BETTER_AUTH_SECRET`, `wrangler secret put AI_API_KEY`) and deployment command (`npx wrangler deploy`).
 - **Verification**: Codebase prepared and validated for edge worker & serverless database deployment.
 
+### Phase 4: Cloudflare & Neon Live Deployment (Completed)
+- **Actions Completed**:
+  - Uploaded secrets (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `AI_API_KEY`) to Cloudflare Worker `ai-study-companion-backend`.
+  - Added `@neondatabase/serverless` and `nodejs_compat` flag for Better Auth edge runtime support.
+  - Deployed Backend API & AI Gateway to Cloudflare Workers (`https://ai-study-companion-backend.rifa-numis.workers.dev`).
+  - Created Cloudflare Pages project `ai-study-companion` and deployed Vite production bundle (`dist/`).
+- **Verification**:
+  - Live Frontend: `https://ai-study-companion.pages.dev`
+  - Live Backend API: `https://ai-study-companion-backend.rifa-numis.workers.dev`
+  - Live PostgreSQL: Connected to Neon instance (`ep-round-glade-axup7g1g`).
+
 *(Future phases will be appended here after completing each step, testing, and committing to Git).*
+
 

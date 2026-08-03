@@ -1,15 +1,16 @@
 name = "ai-study-companion-backend"
 main = "worker/index.ts"
 compatibility_date = "2024-08-01"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
-BETTER_AUTH_URL = "https://ai-study-companion-backend.workers.dev"
+BETTER_AUTH_URL = "https://ai-study-companion-backend.rifa-numis.workers.dev"
 AI_BASE_URL = "https://api.openai.com/v1"
 AI_MODEL = "gpt-4o-mini"
 AI_TEMPERATURE = "0.7"
 AI_SYSTEM_PROMPT = "You are AI Web Companion, an expert academic study tutor for students. Explain concepts clearly with step-by-step reasoning. Use Markdown formatting, headings, bullet lists, bold for key terms, and tables where useful."
 
-# Secrets to set in Cloudflare Worker (via wrangler secret put or dashboard):
+# Secrets set in Cloudflare Worker:
 # - DATABASE_URL (Neon connection string)
 # - BETTER_AUTH_SECRET (32+ char secret string)
 # - AI_API_KEY (Server-managed LLM API key)
