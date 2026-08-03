@@ -29,69 +29,25 @@ const SYSTEM_PROMPT =
   'For math, write clean Unicode equations (e.g. σ² = 1.20); you may use simple LaTeX inline ' +
   'like \\( x^2 \\) sparingly. Be concise but complete.';
 
-const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-proxy`;
-
-function buildTurns(history: Message[], attachments: Attachment[]): Turn[] {
-  const turns: Turn[] = [{ role: 'system', content: SYSTEM_PROMPT }];
-
-  let contextBlock = '';
-  if (attachments.length > 0) {
-    contextBlock = attachments
-      .map((a) => `--- ${a.type.toUpperCase()} CONTEXT: ${a.name} ---\n${a.content}`)
-      .join('\n\n');
-  }
-
-  for (const m of history) {
-    if (m.role === 'system') continue;
-    if (m.role === 'user' && m.attachments && m.attachments.length > 0) {
-      const ctx = m.attachments
-        .map((a) => `--- ${a.type.toUpperCase()} CONTEXT: ${a.name} ---\n${a.content}`)
-        .join('\n\n');
-      turns.push({ role: 'user', content: `${ctx}\n\n${m.content}` });
-    } else {
-      turns.push({ role: m.role, content: m.content });
-    }
-  }
-
-  if (contextBlock) {
-    const last = turns[turns.length - 1];
-    if (last && last.role === 'user') {
-      last.content = `${contextBlock}\n\n${last.content}`;
-    } else {
-      turns.push({ role: 'user', content: contextBlock });
-    }
-  }
-
-  return turns;
-}
+const API_PROXY_URL = import.meta.env.VITE_BETTER_AUTH_URL 
+  ? `${import.meta.env.VITE_BETTER_AUTH_URL}/api/ai-proxy` 
+  : '/api/ai-proxy';
 
 export async function streamChat(
-  settings: Settings,
+  _settings: Settings,
   history: Message[],
   attachments: Attachment[],
   handlers: StreamHandlers,
 ): Promise<void> {
-  if (!settings.apiKey && settings.provider !== 'custom') {
-    throw new Error('No API key set. Open Settings and add your provider API key.');
-  }
-
   const turns = buildTurns(history, attachments);
-  const model = resolveModel(settings);
-  const customBaseUrl =
-    settings.provider === 'custom' && settings.customBaseUrl.trim()
-      ? settings.customBaseUrl.trim().replace(/\/$/, '')
-      : undefined;
 
-  const res = await fetch(EDGE_FUNCTION_URL, {
+  const res = await fetch(API_PROXY_URL, {
     method: 'POST',
-    headers: await authHeaders(),
+    headers: {
+      'Content-Type': 'application/json',
+    },
     signal: handlers.signal,
     body: JSON.stringify({
-      action: 'chat',
-      provider: settings.provider,
-      model,
-      apiKey: settings.apiKey,
-      customBaseUrl,
       turns,
     }),
   });

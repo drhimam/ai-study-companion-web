@@ -32,14 +32,18 @@
      - Better Auth HTTP handler (`/api/auth/*`) backed by `@neondatabase/serverless`.
      - Bearer token / Session cookie authentication middleware.
      - Application REST endpoints (`/api/notebooks`, etc.).
-     - Multi-provider AI Proxy (`/api/ai-proxy`).
+     - Multi-provider AI Proxy (`/api/ai-proxy`) using server environment variables (`AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `AI_TEMPERATURE`).
    - Configured deployment routing in [wrangler.toml](file:///d:/antigravity/ai-study-companion-web/wrangler.toml).
+
+5. **Server-Managed AI Generation Shift**:
+   - Eliminated user-entered API keys in the browser. AI API credentials, endpoints, models, and fine-tuning parameters are managed securely via server environment variables in Cloudflare Workers.
+   - Updated [SettingsModal.tsx](file:///d:/antigravity/ai-study-companion-web/src/components/SettingsModal.tsx) to present a Managed AI Gateway badge and focus on UI/theme preferences.
 
 ---
 
 ## 3. Challenges & Struggles Faced
 
-During the implementation of the Better Auth migration and Cloudflare / Neon backend, the following obstacles were encountered and resolved:
+During implementation, the following obstacles were encountered and resolved:
 
 1. **Dependency & Build Resolution**:
    - *Struggle*: Initial `vite build` failed due to missing module packages (`vite`, `@vitejs/plugin-react`) when packages were being updated.
@@ -53,6 +57,10 @@ During the implementation of the Better Auth migration and Cloudflare / Neon bac
    - *Struggle*: Preventing malicious inputs when fetching user-requested URLs for study material context.
    - *Resolution*: Retained strict host validation (`assertSafeUrl`), filtering out internal IP literals, metadata IPs (`169.254.169.254`), and loopback addresses.
 
+4. **Client API Key Removal & Managed AI Transition**:
+   - *Struggle*: Streamlining `src/lib/ai.ts` so users don't need client-side keys while maintaining AI prompt formatting and attachment context.
+   - *Resolution*: Rewrote `streamChat` in `src/lib/ai.ts` and `handleAiProxy` in `worker/index.ts` to seamlessly proxy prompt turns directly using Cloudflare Worker server variables (`AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`).
+
 ---
 
 ## 4. Next Steps & Security Roadmap
@@ -62,7 +70,7 @@ During the implementation of the Better Auth migration and Cloudflare / Neon bac
 - Verify foreign key relationships and trigger functions in Neon dashboard.
 
 ### Step 2: Cloudflare Worker Deployment & Secrets Setup
-- Set secret variables on Cloudflare Worker: `DATABASE_URL`, `BETTER_AUTH_SECRET`, and AI Provider API Keys (`GEMINI_API_KEY`, `OPENAI_API_KEY`, etc.).
+- Set secret variables on Cloudflare Worker: `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `AI_API_KEY`.
 - Deploy the Worker via `npx wrangler deploy`.
 
 ### Step 3: Security & Hardening Steps
@@ -87,5 +95,11 @@ During the implementation of the Better Auth migration and Cloudflare / Neon bac
   - Initialized Git repository, connected remote `https://github.com/drhimam/ai-study-companion-web.git`, and pushed `main` branch.
 - **Verification**: Clean build generated in `dist/`, verified git remote synchronization on GitHub `main` branch.
 
-*(Future phases will be appended here after completing each step, testing, and committing to Git).*
+### Phase 2: Server-Managed AI Generation Shift (Completed)
+- **Actions Completed**:
+  - Updated `wrangler.toml` and `worker/index.ts` to manage AI API key (`AI_API_KEY`), Base URL (`AI_BASE_URL`), Model (`AI_MODEL`), and fine-tuning parameters server-side.
+  - Refactored [src/lib/ai.ts](file:///d:/antigravity/ai-study-companion-web/src/lib/ai.ts) to remove client-side API key requirements.
+  - Updated [SettingsModal.tsx](file:///d:/antigravity/ai-study-companion-web/src/components/SettingsModal.tsx) to feature a Managed AI Gateway badge and streamline UI options.
+- **Verification**: Verified clean build with `npm run build` (3.65s).
 
+*(Future phases will be appended here after completing each step, testing, and committing to Git).*

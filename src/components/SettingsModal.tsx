@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { X, KeyRound, Cpu, Palette, ExternalLink, Check, Download, Upload, AlertTriangle } from 'lucide-react';
-import { PROVIDERS } from '@/lib/providers';
-import type { ProviderId, Settings } from '@/types';
+import { X, Cpu, Palette, Check, Download, Upload, AlertTriangle, ShieldCheck } from 'lucide-react';
+import type { Settings } from '@/types';
 
 export function SettingsModal({
   open,
@@ -30,22 +29,8 @@ export function SettingsModal({
 
   if (!open) return null;
 
-  const provider = PROVIDERS[draft.provider];
-
   const update = (patch: Partial<Settings>) => {
     setDraft((d) => ({ ...d, ...patch }));
-    setSaved(false);
-  };
-
-  const onProviderChange = (id: ProviderId) => {
-    const p = PROVIDERS[id];
-    setDraft((d) => ({
-      ...d,
-      provider: id,
-      model: p.defaultModel,
-      customModel: '',
-      customBaseUrl: id === 'custom' ? p.baseUrl : d.customBaseUrl,
-    }));
     setSaved(false);
   };
 
@@ -61,7 +46,7 @@ export function SettingsModal({
       <div className="relative w-full max-w-lg bg-modal border border-default rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-default sticky top-0 bg-modal z-10">
           <h2 className="text-base font-semibold text-primary flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-indigo-400" /> AI Provider Settings
+            <Cpu className="w-4 h-4 text-indigo-400" /> Preferences & Settings
           </h2>
           <button
             onClick={onClose}
@@ -72,111 +57,38 @@ export function SettingsModal({
         </div>
 
         <div className="p-5 space-y-5">
-          {/* Provider */}
-          <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">AI Provider</label>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.values(PROVIDERS).map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => onProviderChange(p.id)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all text-left ${
-                    draft.provider === p.id
-                      ? 'bg-indigo-500/15 border-indigo-400/50 text-white'
-                      : 'bg-white/5 border-default text-secondary hover:border-strong'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
+          {/* Managed AI Badge */}
+          <div className="rounded-xl bg-gradient-to-r from-indigo-500/10 to-sky-500/10 border border-indigo-500/20 p-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-400">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-primary">Managed AI Gateway</h3>
+                <p className="text-xs text-muted mt-0.5 leading-relaxed">
+                  AI models, API keys, and endpoint configurations are securely managed by the server environment. No API key setup is required on your browser.
+                </p>
+              </div>
             </div>
           </div>
-
-          {/* Model */}
-          <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">Model</label>
-            <select
-              value={draft.model}
-              onChange={(e) => update({ model: e.target.value })}
-              className="w-full px-3 py-2.5 bg-white/5 border border-default rounded-lg text-primary text-sm focus:outline-none focus:border-indigo-400/50"
-            >
-              {provider.models.map((m) => (
-                <option key={m} value={m} className="bg-modal">
-                  {m}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={draft.customModel}
-              onChange={(e) => update({ customModel: e.target.value })}
-              placeholder="Or type a custom model name"
-              className="w-full mt-2 px-3 py-2 bg-white/5 border border-default rounded-lg text-primary placeholder:text-muted text-sm focus:outline-none focus:border-indigo-400/50"
-            />
-          </div>
-
-          {/* API key */}
-          {draft.provider !== 'custom' && (
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1.5 flex items-center gap-1">
-                <KeyRound className="w-3 h-3" /> API Key
-              </label>
-              <input
-                type="password"
-                value={draft.apiKey}
-                onChange={(e) => update({ apiKey: e.target.value })}
-                placeholder="sk-..."
-                className="w-full px-3 py-2.5 bg-white/5 border border-default rounded-lg text-primary placeholder:text-muted text-sm focus:outline-none focus:border-indigo-400/50 font-mono"
-              />
-              {provider.apiKeyUrl && (
-                <a
-                  href={provider.apiKeyUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 mt-1.5"
-                >
-                  Get an API key <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-            </div>
-          )}
-
-          {/* Custom endpoint */}
-          {draft.provider === 'custom' && (
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1.5">
-                Custom Endpoint URL
-              </label>
-              <input
-                type="text"
-                value={draft.customBaseUrl}
-                onChange={(e) => update({ customBaseUrl: e.target.value })}
-                placeholder="http://localhost:11434/v1"
-                className="w-full px-3 py-2.5 bg-white/5 border border-default rounded-lg text-primary placeholder:text-muted text-sm focus:outline-none focus:border-indigo-400/50 font-mono"
-              />
-              <p className="text-xs text-muted mt-1.5">
-                Any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, etc.).
-              </p>
-            </div>
-          )}
 
           {/* Theme */}
           <div>
             <label className="block text-xs font-medium text-muted mb-1.5 flex items-center gap-1">
-              <Palette className="w-3 h-3" /> Theme
+              <Palette className="w-3 h-3" /> Interface Theme
             </label>
             <div className="flex gap-2">
               {(['dark', 'light'] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => update({ theme: t })}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border capitalize transition-all ${
+                  className={`flex-1 px-3 py-2.5 rounded-lg text-sm font-medium border capitalize transition-all ${
                     draft.theme === t
                       ? 'bg-indigo-500/15 border-indigo-400/50 text-white'
                       : 'bg-white/5 border-default text-secondary hover:border-strong'
                   }`}
                 >
-                  {t}
+                  {t} Mode
                 </button>
               ))}
             </div>
@@ -184,12 +96,12 @@ export function SettingsModal({
 
           {/* Data backup */}
           <div className="border-t border-default pt-4">
-            <label className="block text-xs font-medium text-muted mb-2">Chat History Backup</label>
+            <label className="block text-xs font-medium text-muted mb-2">Chat & Study Material Backup</label>
             <div className="rounded-lg bg-amber-500/10 border border-amber-400/20 p-3 mb-3">
               <div className="flex gap-2">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-200/80 leading-relaxed">
-                  Your chat messages are stored only in this browser. Clearing browser data or switching browsers will erase them. Export regularly to keep a backup.
+                  Export your study history regularly to create a local JSON backup.
                 </p>
               </div>
             </div>
@@ -198,13 +110,13 @@ export function SettingsModal({
                 onClick={onExport}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-default text-secondary text-sm font-medium hover:border-strong hover:text-white transition"
               >
-                <Download className="w-3.5 h-3.5" /> Export All
+                <Download className="w-3.5 h-3.5" /> Export All Data
               </button>
               <button
                 onClick={onImport}
                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-default text-secondary text-sm font-medium hover:border-strong hover:text-white transition"
               >
-                <Upload className="w-3.5 h-3.5" /> Import
+                <Upload className="w-3.5 h-3.5" /> Import Data
               </button>
             </div>
           </div>

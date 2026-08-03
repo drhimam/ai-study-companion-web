@@ -5,13 +5,15 @@ export interface Env {
   DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL?: string;
-  GEMINI_API_KEY?: string;
-  DEEPSEEK_API_KEY?: string;
+  AI_API_KEY?: string;
+  AI_BASE_URL?: string;
+  AI_MODEL?: string;
+  AI_TEMPERATURE?: string;
+  AI_SYSTEM_PROMPT?: string;
+  // Fallbacks
   OPENAI_API_KEY?: string;
-  GROQ_API_KEY?: string;
-  MISTRAL_API_KEY?: string;
-  OPENROUTER_API_KEY?: string;
-  CLAUDE_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
+  GEMINI_API_KEY?: string;
 }
 
 const corsHeaders = {
@@ -38,7 +40,6 @@ export default {
       });
 
       const response = await auth.handler(request);
-      // Append CORS headers
       const newHeaders = new Headers(response.headers);
       Object.entries(corsHeaders).forEach(([k, v]) => newHeaders.set(k, v));
       return new Response(response.body, {
@@ -112,7 +113,7 @@ export default {
       }
     }
 
-    // 3. AI Proxy Endpoint
+    // 3. AI Proxy Endpoint (Server-managed AI Key, Base URL, Model, & Fine-tuning)
     if (url.pathname === "/api/ai-proxy" && request.method === "POST") {
       if (!userId) return jsonError("Unauthorized", 401);
       return handleAiProxy(request, env);
@@ -135,19 +136,51 @@ function jsonError(message: string, status = 400) {
 
 async function handleAiProxy(request: Request, env: Env): Promise<Response> {
   try {
-    const body = await request.json() as any;
-    const { provider = "gemini", model, messages, apiKey, webUrl } = body;
+    const body = await request.json() as {
+      turns?: Array<{ role: string; content: string }>;
+      action?: string;
+    };
 
-    const key = apiKey || env[`${provider.toUpperCase()}_API_KEY` as keyof Env];
-    if (!key) {
-      return jsonError(`API key missing for provider: ${provider}`, 400);
+    const apiKey = env.AI_API_KEY || env.OPENAI_API_KEY || env.DEEPSEEK_API_KEY || env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return jsonError("Server AI API key is not configured in worker environment variables (AI_API_KEY).", 500);
     }
 
-    // AI Provider Proxy Implementation (OpenAI, Gemini, DeepSeek, Claude, OpenRouter)
-    // Standard response forwarding logic
+    const baseUrl = (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+    const model = env.AI_MODEL || "gpt-4o-mini";
+    const temperature = parseFloat(env.AI_TEMPERATURE || "0.7");
+    const systemPrompt = env.AI_SYSTEM_PROMPT || "You are an expert AI academic tutor.";
+
+    const turns = body.turns || [];
+    const messages = turns.some((t) => t.role === "system")
+      ? turns
+      : [{ role: "system", content: systemPrompt }, ...turns];
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature,
+        messages,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return jsonError(`LLM Provider Error (${response.status}): ${errorText}`, response.status);
+    }
+
+    const data = await response.json() as any;
+    const content = data.choices?.[0]?.message?.content || "";
+
     return jsonResponse({
       role: "assistant",
-      content: `[Cloudflare Worker AI Proxy - ${provider}] Responded successfully for model ${model || "default"}.`,
+      content,
+      model,
     });
   } catch (err: any) {
     return jsonError(err.message || "Proxy Execution Failed", 500);
