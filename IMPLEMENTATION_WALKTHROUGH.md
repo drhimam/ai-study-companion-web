@@ -120,6 +120,13 @@ During implementation, the following obstacles were encountered and resolved:
   - Live Backend API: `https://ai-study-companion-backend.rifa-numis.workers.dev`
   - Live PostgreSQL: Connected to Neon instance (`ep-round-glade-axup7g1g`).
 
+### Phase 5: Automated CI/CD GitHub Actions Workflow (Completed)
+- **Actions Completed**:
+  - Created GitHub Actions workflow [.github/workflows/deploy.yml](file:///d:/antigravity/ai-study-companion-web/.github/workflows/deploy.yml) to automate Cloudflare Worker & Pages deployments on every `git push` to `main`.
+  - Documented GitHub repository secrets requirement (`CLOUDFLARE_API_TOKEN` & `CLOUDFLARE_ACCOUNT_ID`).
+- **Verification**: GitHub workflow committed and pushed to `main` branch.
+
 *(Future phases will be appended here after completing each step, testing, and committing to Git).*
+
 
 
