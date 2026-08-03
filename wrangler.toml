@@ -1,0 +1,17 @@
+name = "ai-study-companion-backend"
+main = "worker/index.ts"
+compatibility_date = "2024-08-01"
+
+[vars]
+BETTER_AUTH_URL = "https://ai-study-companion-backend.workers.dev"
+
+# Define secret environment variables in Cloudflare Dashboard or via wrangler secret put:
+# - DATABASE_URL (Neon PostgreSQL connection string)
+# - BETTER_AUTH_SECRET (32+ char secret string)
+# - GEMINI_API_KEY
+# - DEEPSEEK_API_KEY
+# - OPENAI_API_KEY
+# - GROQ_API_KEY
+# - MISTRAL_API_KEY
+# - OPENROUTER_API_KEY
+# - CLAUDE_API_KEY
