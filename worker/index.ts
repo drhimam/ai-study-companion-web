@@ -36,6 +36,27 @@ export default {
 
     const url = new URL(request.url);
 
+    // Healthcheck endpoint
+    if (url.pathname === "/api/health") {
+      try {
+        const sql = neon(env.DATABASE_URL);
+        const userCheck = await sql`SELECT count(*) FROM "user"`;
+        return jsonResponse({
+          status: "ok",
+          dbConnected: true,
+          userCount: userCheck[0]?.count || 0,
+          databaseUrlSet: Boolean(env.DATABASE_URL),
+        }, 200, cors);
+      } catch (err: any) {
+        return jsonResponse({
+          status: "error",
+          dbConnected: false,
+          error: err.message,
+          databaseUrlSet: Boolean(env.DATABASE_URL),
+        }, 500, cors);
+      }
+    }
+
     // 1. Better Auth Routing
     if (url.pathname.startsWith("/api/auth")) {
       try {
@@ -78,14 +99,14 @@ export default {
 
       if (authHeader?.startsWith("Bearer ")) {
         const token = authHeader.substring(7);
-        const res = await sql`SELECT user_id FROM session WHERE token = ${token} AND expires_at > now() LIMIT 1`;
-        if (res.length > 0) userId = res[0].user_id;
+        const res = await sql`SELECT COALESCE("userId", user_id) as uid FROM session WHERE token = ${token} AND ("expiresAt" > now() OR expires_at > now()) LIMIT 1`;
+        if (res.length > 0) userId = res[0].uid;
       } else if (cookieHeader) {
         const match = cookieHeader.match(/better-auth\.session_token=([^;]+)/);
         if (match) {
           const token = decodeURIComponent(match[1]);
-          const res = await sql`SELECT user_id FROM session WHERE token = ${token} AND expires_at > now() LIMIT 1`;
-          if (res.length > 0) userId = res[0].user_id;
+          const res = await sql`SELECT COALESCE("userId", user_id) as uid FROM session WHERE token = ${token} AND ("expiresAt" > now() OR expires_at > now()) LIMIT 1`;
+          if (res.length > 0) userId = res[0].uid;
         }
       }
     } catch (err) {

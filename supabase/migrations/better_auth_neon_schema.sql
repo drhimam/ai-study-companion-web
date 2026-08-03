@@ -9,47 +9,54 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Clean reset of existing legacy tables if converting from Supabase schema
 DROP TABLE IF EXISTS study_materials CASCADE;
 DROP TABLE IF EXISTS flashcards CASCADE;
-DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS notebooks CASCADE;
 DROP TABLE IF EXISTS verification CASCADE;
 DROP TABLE IF EXISTS account CASCADE;
 DROP TABLE IF EXISTS session CASCADE;
 DROP TABLE IF EXISTS "user" CASCADE;
 
--- 1. Better Auth Tables
+-- 1. Better Auth Tables (using standard Better Auth column definitions)
 CREATE TABLE "user" (
   id text PRIMARY KEY,
   name text NOT NULL,
   email text NOT NULL UNIQUE,
-  email_verified boolean NOT NULL DEFAULT false,
+  "emailVerified" boolean NOT NULL DEFAULT false,
   image text,
+  "createdAt" timestamptz NOT NULL DEFAULT now(),
+  "updatedAt" timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE "session" (
   id text PRIMARY KEY,
-  expires_at timestamptz NOT NULL,
+  "expiresAt" timestamptz NOT NULL,
   token text NOT NULL UNIQUE,
+  "createdAt" timestamptz NOT NULL DEFAULT now(),
+  "updatedAt" timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  ip_address text,
-  user_agent text,
-  user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE
+  "ipAddress" text,
+  "userAgent" text,
+  "userId" text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  user_id text REFERENCES "user"(id) ON DELETE CASCADE
 );
 
 CREATE TABLE "account" (
   id text PRIMARY KEY,
-  account_id text NOT NULL,
-  provider_id text NOT NULL,
-  user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  access_token text,
-  refresh_token text,
-  id_token text,
-  access_token_expires_at timestamptz,
-  refresh_token_expires_at timestamptz,
+  "accountId" text NOT NULL,
+  "providerId" text NOT NULL,
+  "userId" text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  user_id text REFERENCES "user"(id) ON DELETE CASCADE,
+  "accessToken" text,
+  "refreshToken" text,
+  "idToken" text,
+  "accessTokenExpiresAt" timestamptz,
+  "refreshTokenExpiresAt" timestamptz,
   scope text,
   password text,
+  "createdAt" timestamptz NOT NULL DEFAULT now(),
+  "updatedAt" timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -58,7 +65,9 @@ CREATE TABLE "verification" (
   id text PRIMARY KEY,
   identifier text NOT NULL,
   value text NOT NULL,
-  expires_at timestamptz NOT NULL,
+  "expiresAt" timestamptz NOT NULL,
+  "createdAt" timestamptz DEFAULT now(),
+  "updatedAt" timestamptz DEFAULT now(),
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -103,7 +112,6 @@ CREATE INDEX idx_flashcards_user_id ON flashcards(user_id);
 CREATE INDEX idx_study_materials_notebook_id ON study_materials(notebook_id);
 CREATE INDEX idx_study_materials_user_id ON study_materials(user_id);
 CREATE INDEX idx_session_token ON session(token);
-CREATE INDEX idx_session_user_id ON session(user_id);
 
 -- 4. Triggers for updated_at
 CREATE OR REPLACE FUNCTION touch_updated_at()
@@ -112,6 +120,7 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   NEW.updated_at := now();
+  NEW."updatedAt" := now();
   RETURN NEW;
 END;
 $$;
