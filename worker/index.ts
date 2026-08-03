@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { neon } from "@neondatabase/serverless";
+import { neon, Pool } from "@neondatabase/serverless";
 
 export interface Env {
   DATABASE_URL: string;
@@ -37,50 +37,64 @@ export default {
 
     // 1. Better Auth Routing
     if (url.pathname.startsWith("/api/auth")) {
-      const auth = betterAuth({
-        database: neon(env.DATABASE_URL),
-        secret: env.BETTER_AUTH_SECRET,
-        baseURL: env.BETTER_AUTH_URL || url.origin,
-        emailAndPassword: { enabled: true },
-        trustedOrigins: [
-          "https://ai-study-companion.pages.dev",
-          "http://localhost:5173",
-          "http://localhost:3000",
-          url.origin,
-        ],
-      });
+      try {
+        const pool = new Pool({ connectionString: env.DATABASE_URL });
+        const auth = betterAuth({
+          database: pool,
+          secret: env.BETTER_AUTH_SECRET || "default_auth_secret_for_development_32chars",
+          baseURL: env.BETTER_AUTH_URL || url.origin,
+          emailAndPassword: { enabled: true },
+          trustedOrigins: [
+            "https://ai-study-companion.pages.dev",
+            "http://localhost:5173",
+            "http://localhost:3000",
+            url.origin,
+          ],
+        });
 
-      const response = await auth.handler(request);
-      const newHeaders = new Headers(response.headers);
-      Object.entries(cors).forEach(([k, v]) => newHeaders.set(k, v));
-      return new Response(response.body, {
-        status: response.status,
-        headers: newHeaders,
-      });
+        const response = await auth.handler(request);
+        const newHeaders = new Headers(response.headers);
+        Object.entries(cors).forEach(([k, v]) => newHeaders.set(k, v));
+        return new Response(response.body, {
+          status: response.status,
+          headers: newHeaders,
+        });
+      } catch (err: any) {
+        console.error("Auth handler error:", err);
+        return new Response(JSON.stringify({ error: err.message || "Authentication Service Error" }), {
+          status: 500,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Authenticate user session for API routes
-    const sql = neon(env.DATABASE_URL);
-    const authHeader = request.headers.get("Authorization");
-    const cookieHeader = request.headers.get("Cookie");
     let userId: string | null = null;
+    try {
+      const sql = neon(env.DATABASE_URL);
+      const authHeader = request.headers.get("Authorization");
+      const cookieHeader = request.headers.get("Cookie");
 
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.substring(7);
-      const res = await sql`SELECT user_id FROM session WHERE token = ${token} AND expires_at > now() LIMIT 1`;
-      if (res.length > 0) userId = res[0].user_id;
-    } else if (cookieHeader) {
-      const match = cookieHeader.match(/better-auth\.session_token=([^;]+)/);
-      if (match) {
-        const token = decodeURIComponent(match[1]);
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.substring(7);
         const res = await sql`SELECT user_id FROM session WHERE token = ${token} AND expires_at > now() LIMIT 1`;
         if (res.length > 0) userId = res[0].user_id;
+      } else if (cookieHeader) {
+        const match = cookieHeader.match(/better-auth\.session_token=([^;]+)/);
+        if (match) {
+          const token = decodeURIComponent(match[1]);
+          const res = await sql`SELECT user_id FROM session WHERE token = ${token} AND expires_at > now() LIMIT 1`;
+          if (res.length > 0) userId = res[0].user_id;
+        }
       }
+    } catch (err) {
+      console.warn("Session check query error:", err);
     }
 
     // 2. Application REST Endpoints
     if (url.pathname.startsWith("/api/notebooks")) {
       if (!userId) return jsonError("Unauthorized", 401, cors);
+      const sql = neon(env.DATABASE_URL);
 
       if (request.method === "GET") {
         const notebooks = await sql`
