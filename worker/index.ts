@@ -195,17 +195,22 @@ async function handleAiProxy(request: Request, env: Env, corsHeaders: Record<str
       return jsonError("Server AI API key is not configured in worker environment variables (AI_API_KEY).", 500, corsHeaders);
     }
 
-    const baseUrl = (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+    const rawBaseUrl = (env.AI_BASE_URL || "https://api.openai.com/v1").trim().replace(/\/$/, "");
     const model = env.AI_MODEL || "gpt-4o-mini";
     const temperature = parseFloat(env.AI_TEMPERATURE || "0.7");
     const systemPrompt = env.AI_SYSTEM_PROMPT || "You are an expert AI academic tutor.";
+
+    let targetUrl = `${rawBaseUrl}/chat/completions`;
+    if (rawBaseUrl.endsWith("/chat/completions")) {
+      targetUrl = rawBaseUrl;
+    }
 
     const turns = body.turns || [];
     const messages = turns.some((t) => t.role === "system")
       ? turns
       : [{ role: "system", content: systemPrompt }, ...turns];
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(targetUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -220,7 +225,7 @@ async function handleAiProxy(request: Request, env: Env, corsHeaders: Record<str
 
     if (!response.ok) {
       const errorText = await response.text();
-      return jsonError(`LLM Provider Error (${response.status}): ${errorText}`, response.status, corsHeaders);
+      return jsonError(`LLM Provider Error (${response.status} at ${targetUrl}): ${errorText.slice(0, 300)}`, response.status, corsHeaders);
     }
 
     const data = await response.json() as any;
