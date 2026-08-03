@@ -17,10 +17,11 @@ export interface Env {
 
 function getCorsHeaders(request: Request) {
   const origin = request.headers.get("Origin") || "*";
+  const requestedHeaders = request.headers.get("Access-Control-Request-Headers") || "Content-Type, Authorization, X-Client-Info, Accept";
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info",
+    "Access-Control-Allow-Headers": requestedHeaders,
     "Access-Control-Allow-Credentials": "true",
   };
 }
@@ -30,7 +31,7 @@ export default {
     const cors = getCorsHeaders(request);
 
     if (request.method === "OPTIONS") {
-      return new Response(null, { headers: cors });
+      return new Response(null, { status: 204, headers: cors });
     }
 
     const url = new URL(request.url);
