@@ -95,24 +95,24 @@ export default {
     // Authenticate user session for API routes
     let userId: string | null = null;
     try {
-      const sql = neon(env.DATABASE_URL);
-      const authHeader = request.headers.get("Authorization");
-      const cookieHeader = request.headers.get("Cookie");
+      const pool = new Pool({ connectionString: env.DATABASE_URL });
+      const auth = betterAuth({
+        database: pool,
+        secret: env.BETTER_AUTH_SECRET || "default_auth_secret_for_development_32chars",
+        baseURL: env.BETTER_AUTH_URL || url.origin,
+        emailAndPassword: { enabled: true },
+        plugins: [bearer()],
+      });
 
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.substring(7);
-        const res = await sql`SELECT COALESCE("userId", user_id) as uid FROM session WHERE token = ${token} AND ("expiresAt" > now() OR expires_at > now()) LIMIT 1`;
-        if (res.length > 0) userId = res[0].uid;
-      } else if (cookieHeader) {
-        const match = cookieHeader.match(/better-auth\.session_token=([^;]+)/);
-        if (match) {
-          const token = decodeURIComponent(match[1]);
-          const res = await sql`SELECT COALESCE("userId", user_id) as uid FROM session WHERE token = ${token} AND ("expiresAt" > now() OR expires_at > now()) LIMIT 1`;
-          if (res.length > 0) userId = res[0].uid;
-        }
+      const sessionObj = await auth.api.getSession({
+        headers: request.headers,
+      });
+
+      if (sessionObj?.user?.id) {
+        userId = sessionObj.user.id;
       }
     } catch (err) {
-      console.warn("Session check query error:", err);
+      console.warn("Session check error:", err);
     }
 
     // 2. Application REST Endpoints
