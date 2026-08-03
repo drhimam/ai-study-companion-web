@@ -3,12 +3,17 @@ import type { Notebook, Flashcard, StudyMaterial } from '@/types';
 const WORKER_BASE_URL = import.meta.env.VITE_BETTER_AUTH_URL || 'https://ai-study-companion-backend.rifa-numis.workers.dev';
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem('better-auth_token');
+  const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
   const res = await fetch(`${WORKER_BASE_URL}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...authHeader,
       ...options.headers,
     },
+    credentials: 'include',
   });
 
   if (!res.ok) {
