@@ -2,8 +2,21 @@
 -- Neon PostgreSQL Schema for AI Study Companion with Better Auth
 -- ============================================================================
 
+-- Ensure pgcrypto extension is active for gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- Clean reset of existing legacy tables if converting from Supabase schema
+DROP TABLE IF EXISTS study_materials CASCADE;
+DROP TABLE IF EXISTS flashcards CASCADE;
+DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS notebooks CASCADE;
+DROP TABLE IF EXISTS verification CASCADE;
+DROP TABLE IF EXISTS account CASCADE;
+DROP TABLE IF EXISTS session CASCADE;
+DROP TABLE IF EXISTS "user" CASCADE;
+
 -- 1. Better Auth Tables
-CREATE TABLE IF NOT EXISTS "user" (
+CREATE TABLE "user" (
   id text PRIMARY KEY,
   name text NOT NULL,
   email text NOT NULL UNIQUE,
@@ -13,7 +26,7 @@ CREATE TABLE IF NOT EXISTS "user" (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS "session" (
+CREATE TABLE "session" (
   id text PRIMARY KEY,
   expires_at timestamptz NOT NULL,
   token text NOT NULL UNIQUE,
@@ -24,7 +37,7 @@ CREATE TABLE IF NOT EXISTS "session" (
   user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS "account" (
+CREATE TABLE "account" (
   id text PRIMARY KEY,
   account_id text NOT NULL,
   provider_id text NOT NULL,
@@ -40,7 +53,7 @@ CREATE TABLE IF NOT EXISTS "account" (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS "verification" (
+CREATE TABLE "verification" (
   id text PRIMARY KEY,
   identifier text NOT NULL,
   value text NOT NULL,
@@ -50,7 +63,7 @@ CREATE TABLE IF NOT EXISTS "verification" (
 );
 
 -- 2. Application Tables
-CREATE TABLE IF NOT EXISTS notebooks (
+CREATE TABLE notebooks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
   title text NOT NULL,
@@ -59,7 +72,7 @@ CREATE TABLE IF NOT EXISTS notebooks (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   notebook_id uuid NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
   user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
@@ -69,7 +82,7 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS flashcards (
+CREATE TABLE flashcards (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   notebook_id uuid NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
   user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
@@ -81,7 +94,7 @@ CREATE TABLE IF NOT EXISTS flashcards (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS study_materials (
+CREATE TABLE study_materials (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   notebook_id uuid NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
   user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
@@ -93,24 +106,26 @@ CREATE TABLE IF NOT EXISTS study_materials (
 );
 
 -- 3. Indexes
-CREATE INDEX IF NOT EXISTS idx_notebooks_user_id ON notebooks(user_id);
-CREATE INDEX IF NOT EXISTS idx_messages_notebook_id ON messages(notebook_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
-CREATE INDEX IF NOT EXISTS idx_flashcards_notebook_id ON flashcards(notebook_id);
-CREATE INDEX IF NOT EXISTS idx_flashcards_user_id ON flashcards(user_id);
-CREATE INDEX IF NOT EXISTS idx_study_materials_notebook_id ON study_materials(notebook_id);
-CREATE INDEX IF NOT EXISTS idx_study_materials_user_id ON study_materials(user_id);
-CREATE INDEX IF NOT EXISTS idx_session_token ON session(token);
-CREATE INDEX IF NOT EXISTS idx_session_user_id ON session(user_id);
+CREATE INDEX idx_notebooks_user_id ON notebooks(user_id);
+CREATE INDEX idx_messages_notebook_id ON messages(notebook_id, created_at);
+CREATE INDEX idx_messages_user_id ON messages(user_id);
+CREATE INDEX idx_flashcards_notebook_id ON flashcards(notebook_id);
+CREATE INDEX idx_flashcards_user_id ON flashcards(user_id);
+CREATE INDEX idx_study_materials_notebook_id ON study_materials(notebook_id);
+CREATE INDEX idx_study_materials_user_id ON study_materials(user_id);
+CREATE INDEX idx_session_token ON session(token);
+CREATE INDEX idx_session_user_id ON session(user_id);
 
 -- 4. Triggers for updated_at
 CREATE OR REPLACE FUNCTION touch_updated_at()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
 BEGIN
   NEW.updated_at := now();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 DROP TRIGGER IF EXISTS notebooks_updated_at ON notebooks;
 CREATE TRIGGER notebooks_updated_at
