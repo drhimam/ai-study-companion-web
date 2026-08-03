@@ -1,5 +1,7 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { useSession, signOut as betterSignOut } from '@/lib/auth-client';
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { signOut as betterSignOut } from '@/lib/auth-client';
+
+const WORKER_AUTH_URL = import.meta.env.VITE_BETTER_AUTH_URL || 'https://ai-study-companion-backend.rifa-numis.workers.dev';
 
 type User = {
   id: string;
@@ -30,50 +32,65 @@ const AuthContext = createContext<AuthContextValue>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  let sessionData: any = null;
-  let isPending = false;
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  try {
-    const res = useSession();
-    sessionData = res.data;
-    isPending = res.isPending;
-  } catch (err) {
-    console.warn('Session hook failed, falling back to logged-out state:', err);
-    isPending = false;
-  }
+  const checkSession = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('better-auth_token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
-  const [timedOut, setTimedOut] = useState(false);
+      const res = await fetch(`${WORKER_AUTH_URL}/api/auth/get-session`, {
+        headers,
+        credentials: 'include',
+      });
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setTimedOut(true);
-    }, 1500);
-    return () => clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.session && data?.user) {
+          setSession({
+            id: String(data.session.id || ''),
+            userId: String(data.session.userId || data.session.user_id || ''),
+            expiresAt: data.session.expiresAt ? new Date(data.session.expiresAt) : new Date(),
+            token: String(data.session.token || token || ''),
+          });
+          setUser({
+            id: String(data.user.id || ''),
+            email: String(data.user.email || ''),
+            name: String(data.user.name || 'User'),
+            image: data.user.image || null,
+          });
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Session check error:', err);
+    }
+    setSession(null);
+    setUser(null);
+    setLoading(false);
   }, []);
 
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
+
   const signOut = async () => {
+    localStorage.removeItem('better-auth_token');
     try {
       await betterSignOut();
     } catch (e) {
       console.error('SignOut error:', e);
     }
+    setSession(null);
+    setUser(null);
+    window.location.reload();
   };
-
-  const user: User | null = sessionData?.user ? {
-    id: String(sessionData.user.id || ''),
-    email: String(sessionData.user.email || ''),
-    name: String(sessionData.user.name || 'User'),
-    image: sessionData.user.image || null,
-  } : null;
-
-  const session: Session | null = sessionData?.session ? {
-    id: String(sessionData.session.id || ''),
-    userId: String(sessionData.session.userId || ''),
-    expiresAt: sessionData.session.expiresAt ? new Date(sessionData.session.expiresAt) : new Date(),
-    token: String(sessionData.session.token || ''),
-  } : null;
-
-  const loading = isPending && !timedOut;
 
   return (
     <AuthContext.Provider value={{ session, user, loading, signOut }}>

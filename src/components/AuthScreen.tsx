@@ -28,18 +28,24 @@ export function AuthScreen() {
     setLoading(true);
     try {
       if (mode === 'signup') {
-        const { error: err } = await signUp.email({
+        const { data, error: err } = await signUp.email({
           email: email.trim(),
           password,
           name: name.trim(),
         });
         if (err) throw err;
+        if (data?.token) {
+          localStorage.setItem('better-auth_token', data.token);
+        }
       } else {
-        const { error: err } = await signIn.email({
+        const { data, error: err } = await signIn.email({
           email: email.trim(),
           password,
         });
         if (err) throw err;
+        if (data?.token) {
+          localStorage.setItem('better-auth_token', data.token);
+        }
       }
       window.location.reload();
     } catch (err: any) {
