@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { bearer } from "better-auth/plugins";
 import { neon, Pool } from "@neondatabase/serverless";
 
 export interface Env {
@@ -66,6 +67,7 @@ export default {
           secret: env.BETTER_AUTH_SECRET || "default_auth_secret_for_development_32chars",
           baseURL: env.BETTER_AUTH_URL || url.origin,
           emailAndPassword: { enabled: true },
+          plugins: [bearer()],
           trustedOrigins: [
             "https://ai-study-companion.pages.dev",
             "http://localhost:5173",
