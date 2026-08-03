@@ -1,5 +1,6 @@
 -- ============================================================================
 -- Neon PostgreSQL Schema for AI Study Companion with Better Auth
+-- Note: Messages are stored in the user's browser localStorage (localMessages.ts)
 -- ============================================================================
 
 -- Ensure pgcrypto extension is active for gen_random_uuid()
@@ -72,16 +73,6 @@ CREATE TABLE notebooks (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE messages (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  notebook_id uuid NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
-  user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  role text NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-  content text NOT NULL,
-  attachments jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
 CREATE TABLE flashcards (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   notebook_id uuid NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
@@ -107,8 +98,6 @@ CREATE TABLE study_materials (
 
 -- 3. Indexes
 CREATE INDEX idx_notebooks_user_id ON notebooks(user_id);
-CREATE INDEX idx_messages_notebook_id ON messages(notebook_id, created_at);
-CREATE INDEX idx_messages_user_id ON messages(user_id);
 CREATE INDEX idx_flashcards_notebook_id ON flashcards(notebook_id);
 CREATE INDEX idx_flashcards_user_id ON flashcards(user_id);
 CREATE INDEX idx_study_materials_notebook_id ON study_materials(notebook_id);
