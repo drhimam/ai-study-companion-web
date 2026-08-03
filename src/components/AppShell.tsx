@@ -34,7 +34,7 @@ import {
   AlertTriangle,
   Upload,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { loadSettings, saveSettings } from '@/lib/settings';
 import {
@@ -263,28 +263,23 @@ export function AppShell() {
 
   const loadNotebooks = useCallback(async () => {
     if (!user) return;
-    const { data, error: err } = await supabase.from('notebooks').select('*').order('updated_at', { ascending: false });
-    if (err) { reportError(err, 'Could not load your notebooks. Please refresh and try again.'); return; }
-    setNotebooks((data as Notebook[]) || []);
-    if (data && data.length > 0 && !activeId) setActiveId(data[0].id);
+    try {
+      const data = await api.getNotebooks();
+      setNotebooks(data || []);
+      if (data && data.length > 0 && !activeId) setActiveId(data[0].id);
+    } catch (err: any) {
+      console.warn('Could not load notebooks:', err);
+    }
   }, [user, activeId]);
 
   useEffect(() => { loadNotebooks(); }, [loadNotebooks]);
 
   useEffect(() => {
     if (!activeId) { setMessages([]); setFlashcards([]); setMaterials([]); return; }
-    (async () => {
-      const msgs = loadLocalMessages(activeId);
-      setMessages(msgs);
-      const [{ data: cards, error: fe }, { data: mats, error: mate }] = await Promise.all([
-        supabase.from('flashcards').select('*').eq('notebook_id', activeId).order('created_at', { ascending: true }),
-        supabase.from('study_materials').select('*').eq('notebook_id', activeId).order('created_at', { ascending: false }),
-      ]);
-      if (fe) reportError(fe, 'Could not load the flashcards in this notebook.');
-      if (mate) reportError(mate, 'Could not load the study materials in this notebook.');
-      setFlashcards((cards as Flashcard[]) || []);
-      setMaterials((mats as StudyMaterial[]) || []);
-    })();
+    const msgs = loadLocalMessages(activeId);
+    setMessages(msgs);
+    setFlashcards([]);
+    setMaterials([]);
   }, [activeId]);
 
   useEffect(() => {
@@ -301,29 +296,37 @@ export function AppShell() {
 
   const createNotebook = async () => {
     const title = `New Notebook ${notebooks.length + 1}`;
-    const { data, error: err } = await supabase.from('notebooks').insert({ title }).select().single();
-    if (err) { reportError(err, 'Could not create the notebook. Please try again.'); return; }
-    const nb = data as Notebook;
-    setNotebooks((n) => [nb, ...n]);
-    setActiveId(nb.id);
-    setView('chat');
+    try {
+      const nb = await api.createNotebook(title);
+      setNotebooks((n) => [nb, ...n]);
+      setActiveId(nb.id);
+      setView('chat');
+    } catch (err: any) {
+      reportError(err, 'Could not create the notebook. Please try again.');
+    }
   };
 
   const renameNotebook = async (id: string, title: string) => {
-    const { error: err } = await supabase.from('notebooks').update({ title }).eq('id', id);
-    if (err) { reportError(err, 'Could not rename the notebook. Please try again.'); return; }
-    setNotebooks((n) => n.map((nb) => (nb.id === id ? { ...nb, title } : nb)));
-    setRenamingId(null);
+    try {
+      await api.updateNotebook(id, { title });
+      setNotebooks((n) => n.map((nb) => (nb.id === id ? { ...nb, title } : nb)));
+      setRenamingId(null);
+    } catch (err: any) {
+      reportError(err, 'Could not rename the notebook. Please try again.');
+    }
   };
 
   const deleteNotebook = async (id: string) => {
-    const { error: err } = await supabase.from('notebooks').delete().eq('id', id);
-    if (err) { reportError(err, 'Could not delete the notebook. Please try again.'); return; }
-    clearLocalMessages(id);
-    setNotebooks((n) => n.filter((nb) => nb.id !== id));
-    if (activeId === id) {
-      const remaining = notebooks.filter((nb) => nb.id !== id);
-      setActiveId(remaining.length > 0 ? remaining[0].id : null);
+    try {
+      await api.deleteNotebook(id);
+      clearLocalMessages(id);
+      setNotebooks((n) => n.filter((nb) => nb.id !== id));
+      if (activeId === id) {
+        const remaining = notebooks.filter((nb) => nb.id !== id);
+        setActiveId(remaining.length > 0 ? remaining[0].id : null);
+      }
+    } catch (err: any) {
+      reportError(err, 'Could not delete the notebook. Please try again.');
     }
   };
 
@@ -331,9 +334,12 @@ export function AppShell() {
     const nb = notebooks.find((n) => n.id === id);
     if (!nb) return;
     const pinned = !nb.pinned;
-    const { error: err } = await supabase.from('notebooks').update({ pinned }).eq('id', id);
-    if (err) { reportError(err, 'Could not pin the notebook. Please try again.'); return; }
-    setNotebooks((n) => n.map((x) => (x.id === id ? { ...x, pinned } : x)));
+    try {
+      await api.updateNotebook(id, { pinned });
+      setNotebooks((n) => n.map((x) => (x.id === id ? { ...x, pinned } : x)));
+    } catch (err: any) {
+      reportError(err, 'Could not pin the notebook. Please try again.');
+    }
   };
 
   const exportNotebook = (nb: Notebook) => {
@@ -460,25 +466,39 @@ export function AppShell() {
         };
 
         let savedMaterial = false;
-        let savedKind: string | null = null;
-
-        // parse flashcards and save as a deck
+        let savedKind: string | null = null;        // parse flashcards and save as a deck
         const parsed = parseFlashcards(acc);
         if (parsed.length > 0) {
           const deckContent: FlashcardDeckContent = { cards: parsed };
           const title = `Flashcard Deck ${new Date().toLocaleDateString()}`;
-          const { data: newDeck } = await supabase
-            .from('study_materials').insert({ notebook_id: activeId, type: 'flashcard_deck', title, content: deckContent }).select('*').single();
-          if (newDeck) { setMaterials((m) => [newDeck as StudyMaterial, ...m]); savedMaterial = true; savedKind = 'flashcard_deck'; }
+          const newDeck: StudyMaterial = {
+            id: crypto.randomUUID(),
+            notebook_id: activeId,
+            user_id: user?.id || '',
+            type: 'flashcard_deck',
+            title,
+            content: deckContent,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          setMaterials((m) => [newDeck, ...m]); savedMaterial = true; savedKind = 'flashcard_deck';
         }
 
         // parse quiz
         const quizContent = parseQuiz(acc);
         if (quizContent) {
           const title = `Quiz ${new Date().toLocaleDateString()}`;
-          const { data: newQuiz } = await supabase
-            .from('study_materials').insert({ notebook_id: activeId, type: 'quiz', title, content: quizContent }).select('*').single();
-          if (newQuiz) { setMaterials((m) => [newQuiz as StudyMaterial, ...m]); savedMaterial = true; savedKind = 'quiz'; }
+          const newQuiz: StudyMaterial = {
+            id: crypto.randomUUID(),
+            notebook_id: activeId,
+            user_id: user?.id || '',
+            type: 'quiz',
+            title,
+            content: quizContent,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          setMaterials((m) => [newQuiz, ...m]); savedMaterial = true; savedKind = 'quiz';
         }
 
         // save infographic (HTML output from infographic prompt)
@@ -486,9 +506,17 @@ export function AppShell() {
           const infoContent = parseInfographic(acc);
           if (infoContent) {
             const title = `Infographic ${new Date().toLocaleDateString()}`;
-            const { data: newMat } = await supabase
-              .from('study_materials').insert({ notebook_id: activeId, type: 'infographic', title, content: infoContent }).select('*').single();
-            if (newMat) { setMaterials((m) => [newMat as StudyMaterial, ...m]); savedMaterial = true; }
+            const newMat: StudyMaterial = {
+              id: crypto.randomUUID(),
+              notebook_id: activeId,
+              user_id: user?.id || '',
+              type: 'infographic',
+              title,
+              content: infoContent,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            setMaterials((m) => [newMat, ...m]); savedMaterial = true;
           }
         }
 
@@ -496,18 +524,34 @@ export function AppShell() {
         if (currentKind === 'assignment') {
           const assignContent = { text: acc };
           const title = `Completed Assignment ${new Date().toLocaleDateString()}`;
-          const { data: newMat } = await supabase
-            .from('study_materials').insert({ notebook_id: activeId, type: 'assignment', title, content: assignContent }).select('*').single();
-          if (newMat) { setMaterials((m) => [newMat as StudyMaterial, ...m]); savedMaterial = true; }
+          const newMat: StudyMaterial = {
+            id: crypto.randomUUID(),
+            notebook_id: activeId,
+            user_id: user?.id || '',
+            type: 'assignment',
+            title,
+            content: assignContent,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          setMaterials((m) => [newMat, ...m]); savedMaterial = true;
         }
 
         // save study note (markdown output from note prompt)
         if (!quizContent && currentKind === 'note') {
           const noteContent = { html: renderMarkdown(acc) };
           const title = `Study Note ${new Date().toLocaleDateString()}`;
-          const { data: newMat } = await supabase
-            .from('study_materials').insert({ notebook_id: activeId, type: 'note', title, content: noteContent }).select('*').single();
-          if (newMat) { setMaterials((m) => [newMat as StudyMaterial, ...m]); savedMaterial = true; }
+          const newMat: StudyMaterial = {
+            id: crypto.randomUUID(),
+            notebook_id: activeId,
+            user_id: user?.id || '',
+            type: 'note',
+            title,
+            content: noteContent,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          setMaterials((m) => [newMat, ...m]); savedMaterial = true;
         }
 
         // For auto-save quick prompts, show a short confirmation instead of the full output
@@ -584,22 +628,18 @@ export function AppShell() {
 
   const updateCardStatus = async (id: string, status: Flashcard['status']) => {
     setFlashcards((c) => c.map((x) => (x.id === id ? { ...x, status } : x)));
-    await supabase.from('flashcards').update({ status }).eq('id', id);
   };
 
   const deleteCard = async (id: string) => {
     setFlashcards((c) => c.filter((x) => x.id !== id));
-    await supabase.from('flashcards').delete().eq('id', id);
   };
 
   const renameMaterial = async (id: string, title: string) => {
     setMaterials((m) => m.map((x) => (x.id === id ? { ...x, title } : x)));
-    await supabase.from('study_materials').update({ title }).eq('id', id);
   };
 
   const deleteMaterial = async (id: string) => {
     setMaterials((m) => m.filter((x) => x.id !== id));
-    await supabase.from('study_materials').delete().eq('id', id);
   };
 
   const editMaterial = async (id: string, title: string, content: string) => {
@@ -630,18 +670,6 @@ export function AppShell() {
       }
     }
 
-    const { error: rpcError } = await supabase.rpc('update_flashcard_deck', {
-      p_material_id: id,
-      p_title: title || mat.title,
-      p_content: parsed as unknown as Record<string, unknown>,
-    });
-
-    if (rpcError) {
-      console.error('Flashcard edit failed', rpcError);
-      setError('Could not save the flashcard deck. Please check your edits and try again.');
-      return;
-    }
-
     setMaterials((m) => m.map((x) => (x.id === id ? { ...x, title: title || x.title, content: parsed as StudyMaterial['content'] } : x)));
   };
 
@@ -649,13 +677,19 @@ export function AppShell() {
     if (!activeId) return;
     const savedContent: SavedContent = { text: msg.content };
     const title = `Saved ${new Date().toLocaleDateString()}`;
-    const { data: newMat } = await supabase
-      .from('study_materials').insert({ notebook_id: activeId, type: 'saved', title, content: savedContent }).select('*').single();
-    if (newMat) {
-      setMaterials((m) => [newMat as StudyMaterial, ...m]);
-      setError('Saved to Study deck.');
-      setTimeout(() => setError(null), 2000);
-    }
+    const newMat: StudyMaterial = {
+      id: crypto.randomUUID(),
+      notebook_id: activeId,
+      user_id: user?.id || '',
+      type: 'saved',
+      title,
+      content: savedContent,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setMaterials((m) => [newMat, ...m]);
+    setError('Saved to Study deck.');
+    setTimeout(() => setError(null), 2000);
   };
 
   const shareText = async (text: string) => {

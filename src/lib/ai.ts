@@ -1,19 +1,4 @@
-import { PROVIDERS, resolveBaseUrl, resolveModel } from './providers';
-import { supabase } from './supabase';
 import type { Attachment, Message, Settings } from '@/types';
-
-/**
- * The proxy requires a real session: the anon key is public and proves nothing.
- */
-async function authHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new Error('Your session has expired. Please sign in again.');
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
-}
 
 export type StreamHandlers = {
   onToken: (token: string) => void;
