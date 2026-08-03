@@ -37,6 +37,20 @@ export default {
 
     const url = new URL(request.url);
 
+    // Build dynamic trusted origins list for custom domain support
+    const reqOrigin = request.headers.get("Origin");
+    const trustedOrigins = [
+      "https://ai.qbanks.org",
+      "http://ai.qbanks.org",
+      "https://ai-study-companion.pages.dev",
+      "http://localhost:5173",
+      "http://localhost:3000",
+      url.origin,
+    ];
+    if (reqOrigin && !trustedOrigins.includes(reqOrigin)) {
+      trustedOrigins.push(reqOrigin);
+    }
+
     // Healthcheck endpoint
     if (url.pathname === "/api/health") {
       try {
@@ -68,12 +82,7 @@ export default {
           baseURL: env.BETTER_AUTH_URL || url.origin,
           emailAndPassword: { enabled: true },
           plugins: [bearer()],
-          trustedOrigins: [
-            "https://ai-study-companion.pages.dev",
-            "http://localhost:5173",
-            "http://localhost:3000",
-            url.origin,
-          ],
+          trustedOrigins,
         });
 
         const response = await auth.handler(request);
@@ -102,6 +111,7 @@ export default {
         baseURL: env.BETTER_AUTH_URL || url.origin,
         emailAndPassword: { enabled: true },
         plugins: [bearer()],
+        trustedOrigins,
       });
 
       const sessionObj = await auth.api.getSession({
