@@ -10,22 +10,27 @@ export interface Env {
   AI_MODEL?: string;
   AI_TEMPERATURE?: string;
   AI_SYSTEM_PROMPT?: string;
-  // Fallbacks
   OPENAI_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
   GEMINI_API_KEY?: string;
 }
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info",
-};
+function getCorsHeaders(request: Request) {
+  const origin = request.headers.get("Origin") || "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const cors = getCorsHeaders(request);
+
     if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: cors });
     }
 
     const url = new URL(request.url);
@@ -37,11 +42,17 @@ export default {
         secret: env.BETTER_AUTH_SECRET,
         baseURL: env.BETTER_AUTH_URL || url.origin,
         emailAndPassword: { enabled: true },
+        trustedOrigins: [
+          "https://ai-study-companion.pages.dev",
+          "http://localhost:5173",
+          "http://localhost:3000",
+          url.origin,
+        ],
       });
 
       const response = await auth.handler(request);
       const newHeaders = new Headers(response.headers);
-      Object.entries(corsHeaders).forEach(([k, v]) => newHeaders.set(k, v));
+      Object.entries(cors).forEach(([k, v]) => newHeaders.set(k, v));
       return new Response(response.body, {
         status: response.status,
         headers: newHeaders,
@@ -69,13 +80,13 @@ export default {
 
     // 2. Application REST Endpoints
     if (url.pathname.startsWith("/api/notebooks")) {
-      if (!userId) return jsonError("Unauthorized", 401);
+      if (!userId) return jsonError("Unauthorized", 401, cors);
 
       if (request.method === "GET") {
         const notebooks = await sql`
           SELECT * FROM notebooks WHERE user_id = ${userId} ORDER BY updated_at DESC
         `;
-        return jsonResponse(notebooks);
+        return jsonResponse(notebooks, 200, cors);
       }
 
       if (request.method === "POST") {
@@ -84,11 +95,11 @@ export default {
           INSERT INTO notebooks (user_id, title) VALUES (${userId}, ${body.title})
           RETURNING *
         `;
-        return jsonResponse(inserted[0]);
+        return jsonResponse(inserted[0], 200, cors);
       }
 
       const pathParts = url.pathname.split("/").filter(Boolean);
-      const notebookId = pathParts[2]; // /api/notebooks/:id
+      const notebookId = pathParts[2];
 
       if (notebookId && request.method === "PATCH") {
         const body = await request.json() as { title?: string; pinned?: boolean };
@@ -104,37 +115,37 @@ export default {
             WHERE id = ${notebookId} AND user_id = ${userId} RETURNING *
           `;
         }
-        return jsonResponse(updated ? updated[0] : null);
+        return jsonResponse(updated ? updated[0] : null, 200, cors);
       }
 
       if (notebookId && request.method === "DELETE") {
         await sql`DELETE FROM notebooks WHERE id = ${notebookId} AND user_id = ${userId}`;
-        return jsonResponse({ success: true });
+        return jsonResponse({ success: true }, 200, cors);
       }
     }
 
-    // 3. AI Proxy Endpoint (Server-managed AI Key, Base URL, Model, & Fine-tuning)
+    // 3. AI Proxy Endpoint
     if (url.pathname === "/api/ai-proxy" && request.method === "POST") {
-      if (!userId) return jsonError("Unauthorized", 401);
-      return handleAiProxy(request, env);
+      if (!userId) return jsonError("Unauthorized", 401, cors);
+      return handleAiProxy(request, env, cors);
     }
 
-    return jsonError("Not Found", 404);
+    return jsonError("Not Found", 404, cors);
   },
 };
 
-function jsonResponse(data: any, status = 200) {
+function jsonResponse(data: any, status = 200, corsHeaders: Record<string, string>) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
 
-function jsonError(message: string, status = 400) {
-  return jsonResponse({ error: message }, status);
+function jsonError(message: string, status = 400, corsHeaders: Record<string, string>) {
+  return jsonResponse({ error: message }, status, corsHeaders);
 }
 
-async function handleAiProxy(request: Request, env: Env): Promise<Response> {
+async function handleAiProxy(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
   try {
     const body = await request.json() as {
       turns?: Array<{ role: string; content: string }>;
@@ -143,7 +154,7 @@ async function handleAiProxy(request: Request, env: Env): Promise<Response> {
 
     const apiKey = env.AI_API_KEY || env.OPENAI_API_KEY || env.DEEPSEEK_API_KEY || env.GEMINI_API_KEY;
     if (!apiKey) {
-      return jsonError("Server AI API key is not configured in worker environment variables (AI_API_KEY).", 500);
+      return jsonError("Server AI API key is not configured in worker environment variables (AI_API_KEY).", 500, corsHeaders);
     }
 
     const baseUrl = (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
@@ -171,7 +182,7 @@ async function handleAiProxy(request: Request, env: Env): Promise<Response> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return jsonError(`LLM Provider Error (${response.status}): ${errorText}`, response.status);
+      return jsonError(`LLM Provider Error (${response.status}): ${errorText}`, response.status, corsHeaders);
     }
 
     const data = await response.json() as any;
@@ -181,8 +192,8 @@ async function handleAiProxy(request: Request, env: Env): Promise<Response> {
       role: "assistant",
       content,
       model,
-    });
+    }, 200, corsHeaders);
   } catch (err: any) {
-    return jsonError(err.message || "Proxy Execution Failed", 500);
+    return jsonError(err.message || "Proxy Execution Failed", 500, corsHeaders);
   }
 }

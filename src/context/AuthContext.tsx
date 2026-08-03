@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useSession, signOut as betterSignOut } from '@/lib/auth-client';
 
 type User = {
@@ -31,6 +31,14 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: sessionData, isPending } = useSession();
+  const [timedOut, setTimedOut] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTimedOut(true);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const signOut = async () => {
     await betterSignOut();
@@ -50,8 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     token: sessionData.session.token,
   } : null;
 
+  const loading = isPending && !timedOut;
+
   return (
-    <AuthContext.Provider value={{ session, user, loading: isPending, signOut }}>
+    <AuthContext.Provider value={{ session, user, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );
