@@ -41,6 +41,7 @@ export function AuthScreen() {
         });
         if (err) throw err;
       }
+      window.location.reload();
     } catch (err: any) {
       console.error('Auth failure:', err);
       setError(
