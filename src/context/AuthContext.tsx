@@ -30,7 +30,18 @@ const AuthContext = createContext<AuthContextValue>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: sessionData, isPending } = useSession();
+  let sessionData: any = null;
+  let isPending = false;
+
+  try {
+    const res = useSession();
+    sessionData = res.data;
+    isPending = res.isPending;
+  } catch (err) {
+    console.warn('Session hook failed, falling back to logged-out state:', err);
+    isPending = false;
+  }
+
   const [timedOut, setTimedOut] = useState(false);
 
   useEffect(() => {
@@ -41,21 +52,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await betterSignOut();
+    try {
+      await betterSignOut();
+    } catch (e) {
+      console.error('SignOut error:', e);
+    }
   };
 
-  const user = sessionData?.user ? {
-    id: sessionData.user.id,
-    email: sessionData.user.email,
-    name: sessionData.user.name,
-    image: sessionData.user.image,
+  const user: User | null = sessionData?.user ? {
+    id: String(sessionData.user.id || ''),
+    email: String(sessionData.user.email || ''),
+    name: String(sessionData.user.name || 'User'),
+    image: sessionData.user.image || null,
   } : null;
 
-  const session = sessionData?.session ? {
-    id: sessionData.session.id,
-    userId: sessionData.session.userId,
-    expiresAt: new Date(sessionData.session.expiresAt),
-    token: sessionData.session.token,
+  const session: Session | null = sessionData?.session ? {
+    id: String(sessionData.session.id || ''),
+    userId: String(sessionData.session.userId || ''),
+    expiresAt: sessionData.session.expiresAt ? new Date(sessionData.session.expiresAt) : new Date(),
+    token: String(sessionData.session.token || ''),
   } : null;
 
   const loading = isPending && !timedOut;
