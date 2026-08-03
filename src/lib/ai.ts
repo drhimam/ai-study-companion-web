@@ -7,9 +7,8 @@ export type StreamHandlers = {
 
 type Turn = { role: 'system' | 'user' | 'assistant'; content: string };
 
-const API_PROXY_URL = import.meta.env.VITE_BETTER_AUTH_URL 
-  ? `${import.meta.env.VITE_BETTER_AUTH_URL}/api/ai-proxy` 
-  : '/api/ai-proxy';
+const WORKER_BASE_URL = import.meta.env.VITE_BETTER_AUTH_URL || 'https://ai-study-companion-backend.rifa-numis.workers.dev';
+const API_PROXY_URL = `${WORKER_BASE_URL.replace(/\/$/, '')}/api/ai-proxy`;
 
 function buildTurns(history: Message[], attachments: Attachment[]): Turn[] {
   const turns: Turn[] = [];
