@@ -44,8 +44,8 @@ import {
 } from '@/lib/localMessages';
 import { loadLocalMaterials, saveLocalMaterials } from '@/lib/localMaterials';
 import { PROVIDERS, resolveModel } from '@/lib/providers';
-import { streamChat, fetchUrlContent, fetchYoutubeTranscript, QUICK_PROMPTS, buildQuizPrompt, buildInfographicPrompt, buildAssignmentPrompt } from '@/lib/ai';
-import type { Attachment, Flashcard, Message, Notebook, Settings, StudyMaterial, QuizContent, QuizQuestion, SimpleFlashcard, FlashcardDeckContent, SavedContent } from '@/types';
+import { streamChat, fetchUrlContent, fetchYoutubeTranscript, QUICK_PROMPTS, buildQuizPrompt, buildInfographicPrompt, buildAssignmentPrompt, parseFlashcards, parseQuiz, parseInfographic } from '@/lib/ai';
+import type { Attachment, Flashcard, Message, Notebook, Settings, StudyMaterial, QuizContent, SimpleFlashcard, FlashcardDeckContent, SavedContent } from '@/types';
 import { Markdown, renderMarkdown } from '@/components/Markdown';
 import { SettingsModal } from '@/components/SettingsModal';
 import { AccountGroup } from '@/components/AccountGroup';
@@ -53,95 +53,6 @@ import { StudyPage } from '@/components/StudyPage';
 import { QuizConfigModal, type QuizConfig } from '@/components/QuizConfigModal';
 import { InfographicConfigModal, type InfographicConfig } from '@/components/InfographicConfigModal';
 
-const FLASHCARD_RE = /\[FLASHCARD_START\]\s*Front:\s*(.*?)\nBack:\s*(.*?)\nAnalogy:\s*(.*?)\nFormula:\s*(.*?)\s*\[FLASHCARD_END\]/gs;
-const QUIZ_RE = /\[QUIZ_QUESTION_START\]\s*Type:\s*(\w+)\s*\nQuestion:\s*(.*?)\n(?:Options:\s*(.*?)\n)?Correct:\s*(.*?)\nExplanation:\s*(.*?)\s*\[QUIZ_QUESTION_END\]/gs;
-
-const QUIZ_RE_FALLBACK = /(?:^|\n)\s*(?:Q\d+[.):]\s*|\d+[.)]\s*)(.*?)\n((?:[A-D][)\.]\s+.*?\n){2,4})Answer:\s*([A-D](?:\s*,\s*[A-D])*)\s*[-–]\s*(.*)/g;
-
-function parseFlashcards(text: string): SimpleFlashcard[] {
-  const out: SimpleFlashcard[] = [];
-  let m: RegExpExecArray | null;
-  const re = new RegExp(FLASHCARD_RE.source, 'gs');
-  while ((m = re.exec(text)) !== null) {
-    out.push({
-      front: m[1].trim(),
-      back: m[2].trim(),
-      analogy: m[3].trim() || null,
-      formula: m[4].trim() && m[4].trim() !== 'N/A' ? m[4].trim() : null,
-    });
-  }
-  return out;
-}
-
-function parseQuiz(text: string): QuizContent | null {
-  const questions: QuizQuestion[] = [];
-  let m: RegExpExecArray | null;
-
-  // Primary format: structured [QUIZ_QUESTION_START] blocks
-  const re = new RegExp(QUIZ_RE.source, 'gs');
-  while ((m = re.exec(text)) !== null) {
-    const type = m[1].trim().toLowerCase() as QuizQuestion['type'];
-    const question = m[2].trim();
-    const optionsStr = m[3] ? m[3].trim() : '';
-    const correctStr = m[4].trim();
-    const explanation = m[5].trim();
-
-    let options: string[] = [];
-    if (type !== 'short' && optionsStr) {
-      options = optionsStr.split(/\|/).map((o) => o.replace(/^[A-D]\)\s*/, '').trim()).filter(Boolean);
-    }
-
-    let correct: number[] | string;
-    if (type === 'short') {
-      correct = correctStr;
-    } else {
-      correct = correctStr.split(',').map((c) => {
-        const letter = c.trim().toUpperCase();
-        return letter.charCodeAt(0) - 65;
-      }).filter((n) => n >= 0 && n < 4);
-    }
-
-    questions.push({ id: crypto.randomUUID(), type, question, options, correct, explanation });
-  }
-
-  // Fallback: plain-text Q1/A)B)C)D)/Answer: A - explanation format
-  if (questions.length === 0) {
-    const re2 = new RegExp(QUIZ_RE_FALLBACK.source, 'gs');
-    while ((m = re2.exec(text)) !== null) {
-      const question = m[1].trim();
-      const optionsBlock = m[2];
-      const correctStr = m[3].trim();
-      const explanation = m[4].trim();
-
-      const options = optionsBlock
-        .split('\n')
-        .map((l) => l.replace(/^[A-D][)\.]\s*/, '').trim())
-        .filter(Boolean);
-      if (options.length < 2) continue;
-
-      const correct = correctStr.split(',').map((c) => {
-        const letter = c.trim().toUpperCase();
-        return letter.charCodeAt(0) - 65;
-      }).filter((n) => n >= 0 && n < options.length);
-
-      questions.push({ id: crypto.randomUUID(), type: correct.length > 1 ? 'multi' : 'mcq', question, options, correct, explanation });
-    }
-  }
-
-  if (questions.length === 0) return null;
-  return { questions, difficulty: 'Medium', config: { count: questions.length, types: { mcq: 0, multi: 0, short: 0 } } };
-}
-
-function parseInfographic(text: string): { html: string } | null {
-  const match = text.match(/<!DOCTYPE html>[\s\S]*<\/html>/i);
-  if (match) return { html: match[0] };
-  if (text.trim().startsWith('<') && text.trim().endsWith('>')) return { html: text.trim() };
-  return null;
-}
-
-function isLikelyHtml(text: string): boolean {
-  return /<!DOCTYPE html>|<html[\s\S]*<\/html>/i.test(text);
-}
 
 function stripPreamble(text: string): string {
   return text
@@ -275,15 +186,20 @@ export function AppShell() {
 
   useEffect(() => { loadNotebooks(); }, [loadNotebooks]);
 
-  const updateMaterials = (updater: (prev: StudyMaterial[]) => StudyMaterial[]) => {
+  // Use a ref so that updateMaterials never captures a stale activeId
+  const activeIdRef = useRef<string | null>(null);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+
+  const updateMaterials = useCallback((updater: (prev: StudyMaterial[]) => StudyMaterial[]) => {
     setMaterials((prev) => {
       const next = updater(prev);
-      if (activeId) {
-        saveLocalMaterials(activeId, next);
+      const currentNotebookId = activeIdRef.current;
+      if (currentNotebookId) {
+        saveLocalMaterials(currentNotebookId, next);
       }
       return next;
     });
-  };
+  }, []);
 
   const loadMaterialsForNotebook = useCallback(async (notebookId: string) => {
     try {
@@ -482,6 +398,8 @@ export function AppShell() {
 
     const history = [...messages, userMsg];
     setMessages(history);
+    // Persist user message to localStorage immediately so it survives an AI error
+    if (activeId) saveLocalMessages(activeId, history);
     const currentAttachments = attachments;
     setStreaming(true);
     setStreamText('');
@@ -948,7 +866,7 @@ export function AppShell() {
                   <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-sky-500/20 border border-default flex items-center justify-center mb-4"><Sparkles className="w-7 h-7 text-indigo-300" /></div>
                   <h2 className="text-lg font-semibold text-primary">Ask anything</h2>
                   <p className="text-sm text-muted mt-1 max-w-md">Type a question, paste study material, attach files, or use a quick prompt. Your AI tutor will explain step by step.</p>
-                  {!settings.apiKey && settings.provider !== 'custom' && (
+                  {!settings.apiKey && settings.provider !== 'custom' && settings.provider !== ('managed' as any) && (
                     <div className="mt-4 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">Add your {providerLabel} API key in Settings to start chatting.</div>
                   )}
                 </div>

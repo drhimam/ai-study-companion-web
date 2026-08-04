@@ -98,18 +98,72 @@ export async function fetchYoutubeTranscript(url: string): Promise<{ title: stri
   return { title: url, content: `Transcript extracted from YouTube video at ${url}` };
 }
 
+export function buildFlashcardsPrompt(topic: string): string {
+  return (
+    `Create a deck of study flashcards based on the following content.\n` +
+    `Output ONLY a single JSON array with 5 to 15 objects. No surrounding markdown fences, no extra text.\n` +
+    `Each object MUST have these exact keys:\n` +
+    `  "front"   – the question or term (string)\n` +
+    `  "back"    – the answer or definition (string)\n` +
+    `  "analogy" – a helpful analogy or null\n` +
+    `  "formula" – a formula/equation or null\n\n` +
+    `Content:\n${topic}`
+  );
+}
+
 export function buildQuizPrompt(topic: string, countOrConfig: number | any = 5): string {
-  const count = typeof countOrConfig === 'number' ? countOrConfig : (countOrConfig?.questionCount || 5);
-  const difficulty = typeof countOrConfig === 'object' && countOrConfig?.difficulty ? ` Difficulty level: ${countOrConfig.difficulty}.` : '';
-  return `Generate a multiple choice practice quiz with ${count} questions on the topic: "${topic}".${difficulty}\n` +
-    `Output ONLY a valid JSON object matching this structure:\n` +
-    `{\n  "title": "${topic} Quiz",\n  "questions": [\n    {\n      "id": "q1",\n      "question": "...",\n      "options": ["A", "B", "C", "D"],\n      "correctIndex": 0,\n      "explanation": "..."\n    }\n  ]\n}\nNo markdown codeblocks or outer text.`;
+  const count = typeof countOrConfig === 'number' ? countOrConfig : (countOrConfig?.count || countOrConfig?.questionCount || 5);
+  const difficulty = typeof countOrConfig === 'object' && countOrConfig?.difficulty ? ` Difficulty: ${countOrConfig.difficulty}.` : '';
+  const mcqPct  = typeof countOrConfig === 'object' ? (countOrConfig?.types?.mcq  ?? 60) : 60;
+  const multiPct = typeof countOrConfig === 'object' ? (countOrConfig?.types?.multi ?? 20) : 20;
+  const shortPct = typeof countOrConfig === 'object' ? (countOrConfig?.types?.short ?? 20) : 20;
+
+  // Derive actual counts per type
+  const mcqCount   = Math.round(count * mcqPct  / 100);
+  const multiCount = Math.round(count * multiPct / 100);
+  const shortCount = count - mcqCount - multiCount;
+
+  return (
+    `Generate a practice quiz with exactly ${count} questions on: "${topic}".${difficulty}\n` +
+    `Breakdown: ~${mcqCount} single-choice MCQ, ~${multiCount} multi-select, ~${shortCount} short-answer.\n\n` +
+    `Output ONLY a valid JSON object — no markdown fences, no outer text — matching this EXACT structure:\n` +
+    `{\n` +
+    `  "title": "Quiz Title",\n` +
+    `  "difficulty": "${typeof countOrConfig === 'object' ? (countOrConfig?.difficulty || 'Medium') : 'Medium'}",\n` +
+    `  "questions": [\n` +
+    `    {\n` +
+    `      "id": "q1",\n` +
+    `      "type": "mcq",\n` +
+    `      "question": "Question text here",\n` +
+    `      "options": ["Option A", "Option B", "Option C", "Option D"],\n` +
+    `      "correct": [0],\n` +
+    `      "explanation": "Why this answer is correct"\n` +
+    `    },\n` +
+    `    {\n` +
+    `      "id": "q2",\n` +
+    `      "type": "multi",\n` +
+    `      "question": "Which of the following are correct? (select all)",\n` +
+    `      "options": ["Option A", "Option B", "Option C", "Option D"],\n` +
+    `      "correct": [0, 2],\n` +
+    `      "explanation": "Explanation"\n` +
+    `    },\n` +
+    `    {\n` +
+    `      "id": "q3",\n` +
+    `      "type": "short",\n` +
+    `      "question": "Short answer question?",\n` +
+    `      "options": [],\n` +
+    `      "correct": "Model answer",\n` +
+    `      "explanation": "Explanation"\n` +
+    `    }\n` +
+    `  ]\n` +
+    `}`
+  );
 }
 
 export function buildInfographicPrompt(topic: string, config?: any): string {
   let styleInfo = '';
   if (config) {
-    const details = [];
+    const details: string[] = [];
     if (config.infographicType) details.push(`Type: ${config.infographicType}`);
     if (config.pageSize) details.push(`Size: ${config.pageSize}`);
     if (config.orientation) details.push(`Orientation: ${config.orientation}`);
@@ -117,15 +171,40 @@ export function buildInfographicPrompt(topic: string, config?: any): string {
     if (config.instructions) details.push(`Custom Instructions: ${config.instructions}`);
     if (details.length > 0) styleInfo = ` Specifications: (${details.join(', ')}).`;
   }
-  return `Create a visually rich, styled HTML document for an infographic summary on the topic: "${topic}".${styleInfo} Use clean CSS styling with modern layout cards, clean typography, vibrant visual hierarchy, and bullet lists. Return raw HTML only without markdown fences.`;
+  return (
+    `Create a visually rich, self-contained HTML infographic on the topic: "${topic}".${styleInfo}\n` +
+    `Requirements:\n` +
+    `- Return raw HTML starting with <!DOCTYPE html> — no markdown fences, no outer prose\n` +
+    `- Embed all CSS in a <style> block inside <head>\n` +
+    `- Use modern card layout, vibrant colors, clean typography, and visual hierarchy\n` +
+    `- Include relevant icons using Unicode or simple SVG shapes\n` +
+    `- No JavaScript, no external resources`
+  );
 }
 
 export function buildAssignmentPrompt(topic: string): string {
-  return `Create a comprehensive academic study assignment on the topic: "${topic}". Include 3 parts: Part A (Key Terms & Concepts), Part B (Short Answer Practice Questions), and Part C (Sample Model Solutions). Use Markdown formatting.`;
+  return (
+    `Create a comprehensive academic study assignment on the topic: "${topic}".\n` +
+    `Include 3 sections:\n` +
+    `  Part A – Key Terms & Concepts (define at least 6 terms)\n` +
+    `  Part B – Short Answer Practice Questions (at least 5 questions)\n` +
+    `  Part C – Sample Model Solutions (full answers for Part B)\n` +
+    `Use Markdown formatting with clear headings.`
+  );
 }
 
 export function buildNotePrompt(topic: string): string {
-  return `Create a complete, beautifully structured study guide note on the topic: "${topic}". Include an Introduction, Core Principles, Key Formulas or Rules, Practical Examples, and Common Pitfalls. Use Markdown.`;
+  return (
+    `Create a complete, beautifully structured study guide on: "${topic}".\n` +
+    `Sections to include:\n` +
+    `  1. Introduction & Overview\n` +
+    `  2. Core Principles & Key Concepts\n` +
+    `  3. Key Formulas or Rules (if applicable)\n` +
+    `  4. Worked Examples\n` +
+    `  5. Common Pitfalls & Misconceptions\n` +
+    `  6. Quick Summary Bullet Points\n` +
+    `Use Markdown with clear headings, bold key terms, and bullet lists.`
+  );
 }
 
 export function parseFlashcards(text: string): SimpleFlashcard[] {
@@ -147,10 +226,59 @@ export function parseQuiz(text: string): QuizContent | null {
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
     const parsed = JSON.parse(jsonMatch[0]);
-    if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-      return parsed as QuizContent;
-    }
-    return null;
+    if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) return null;
+
+    // Normalise each question to match QuizContent schema
+    const seenIds = new Set<string>();
+    const questions: QuizContent['questions'] = parsed.questions.map((q: any) => {
+      // Ensure unique id
+      let id = typeof q.id === 'string' && q.id ? q.id : crypto.randomUUID();
+      if (seenIds.has(id)) id = crypto.randomUUID();
+      seenIds.add(id);
+
+      // Ensure type is valid
+      const type: 'mcq' | 'multi' | 'short' =
+        q.type === 'multi' ? 'multi' : q.type === 'short' ? 'short' : 'mcq';
+
+      // Coerce correct field
+      let correct: number[] | string;
+      if (type === 'short') {
+        correct = typeof q.correct === 'string' ? q.correct : String(q.correct ?? '');
+      } else if (Array.isArray(q.correct)) {
+        correct = q.correct.map(Number).filter((n: number) => !isNaN(n));
+      } else if (typeof q.correct === 'number') {
+        // AI may emit correctIndex or correct as plain number
+        correct = [q.correct];
+      } else if (typeof q.correctIndex === 'number') {
+        // Backwards-compat: old prompt used correctIndex
+        correct = [q.correctIndex];
+      } else {
+        correct = [0];
+      }
+
+      const options: string[] = Array.isArray(q.options) ? q.options.map(String) : [];
+
+      return {
+        id,
+        type,
+        question: String(q.question || ''),
+        options,
+        correct,
+        explanation: String(q.explanation || ''),
+      };
+    });
+
+    const difficulty = typeof parsed.difficulty === 'string' ? parsed.difficulty : 'Medium';
+    const count = questions.length;
+    const mcq  = questions.filter((q) => q.type === 'mcq').length;
+    const multi = questions.filter((q) => q.type === 'multi').length;
+    const short = questions.filter((q) => q.type === 'short').length;
+
+    return {
+      questions,
+      difficulty,
+      config: { count, types: { mcq, multi, short } },
+    };
   } catch {
     return null;
   }
@@ -205,26 +333,19 @@ export const QUICK_PROMPTS: { label: string; icon: string; kind?: 'flashcards' |
     label: 'Generate Flashcards',
     icon: '📇',
     kind: 'flashcards',
-    template: (i) =>
-      `Create a deck of study flashcards based on the text below.\n` +
-      `Output ONLY a single JSON array with 5 to 15 objects. No surrounding markdown fences, no extra text.\n` +
-      `Each object MUST have exact keys: "front", "back", and optionally "analogy" and "formula".\n\nText:\n${i}`,
+    template: (i) => buildFlashcardsPrompt(i),
   },
   {
     label: 'Create Quiz',
     icon: '🧪',
     kind: 'quiz',
-    template: (i) =>
-      `Generate a multiple choice practice quiz based on the content below.\n` +
-      `Output ONLY a valid JSON object matching this structure:\n` +
-      `{\n  "title": "Quiz Title",\n  "questions": [\n    {\n      "id": "q1",\n      "question": "...",\n      "options": ["A", "B", "C", "D"],\n      "correctIndex": 0,\n      "explanation": "..."\n    }\n  ]\n}\nNo markdown codeblocks or outer text.\n\nContent:\n${i}`,
+    template: (i) => buildQuizPrompt(i, 5),
   },
   {
     label: 'Generate Note',
     icon: '📑',
     kind: 'note',
-    template: (i) =>
-      `Create a comprehensive, well-structured study note summarizing the following material. Use headings, key terms in bold, bullet lists, and clear explanations.\n\nContent:\n${i}`,
+    template: (i) => buildNotePrompt(i),
   },
   {
     label: 'Generate Infographic',
