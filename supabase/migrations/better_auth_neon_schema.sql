@@ -98,7 +98,7 @@ CREATE TABLE study_materials (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   notebook_id uuid NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
   user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  type text NOT NULL CHECK (type IN ('flashcard_deck', 'quiz', 'study_guide', 'mindmap', 'assignment')),
+  type text NOT NULL CHECK (type IN ('flashcard_deck', 'quiz', 'note', 'infographic', 'saved', 'assignment')),
   title text NOT NULL,
   content jsonb NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
