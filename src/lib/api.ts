@@ -48,4 +48,21 @@ export const api = {
     apiFetch<{ success: boolean }>(`/api/notebooks/${id}`, {
       method: 'DELETE',
     }),
+
+  // Study Materials (Cloud DB)
+  getMaterials: (notebookId: string) => apiFetch<StudyMaterial[]>(`/api/materials?notebook_id=${notebookId}`),
+  createMaterial: (data: { notebook_id: string; type: string; title: string; content: any }) =>
+    apiFetch<StudyMaterial>('/api/materials', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateMaterial: (id: string, patch: { title?: string; content?: any }) =>
+    apiFetch<StudyMaterial>(`/api/materials/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  deleteMaterial: (id: string) =>
+    apiFetch<{ success: boolean }>(`/api/materials/${id}`, {
+      method: 'DELETE',
+    }),
 };

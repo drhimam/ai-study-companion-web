@@ -42,6 +42,7 @@ import {
   clearLocalMessages, exportAllLocalMessages, importLocalMessages,
   type ExportBundle,
 } from '@/lib/localMessages';
+import { loadLocalMaterials, saveLocalMaterials } from '@/lib/localMaterials';
 import { PROVIDERS, resolveModel } from '@/lib/providers';
 import { streamChat, fetchUrlContent, fetchYoutubeTranscript, QUICK_PROMPTS, buildQuizPrompt, buildInfographicPrompt, buildAssignmentPrompt } from '@/lib/ai';
 import type { Attachment, Flashcard, Message, Notebook, Settings, StudyMaterial, QuizContent, QuizQuestion, SimpleFlashcard, FlashcardDeckContent, SavedContent } from '@/types';
@@ -274,13 +275,50 @@ export function AppShell() {
 
   useEffect(() => { loadNotebooks(); }, [loadNotebooks]);
 
+  const loadMaterialsForNotebook = useCallback(async (notebookId: string) => {
+    try {
+      const cloudMats = await api.getMaterials(notebookId);
+      if (Array.isArray(cloudMats)) {
+        setMaterials(cloudMats);
+        saveLocalMaterials(notebookId, cloudMats);
+        return;
+      }
+    } catch (err) {
+      console.warn('Could not fetch study materials from cloud API, using local storage fallback:', err);
+    }
+    setMaterials(loadLocalMaterials(notebookId));
+  }, []);
+
+  const persistMaterial = async (mat: Omit<StudyMaterial, 'id' | 'created_at' | 'updated_at'>) => {
+    let newMat: StudyMaterial;
+    try {
+      const created = await api.createMaterial({
+        notebook_id: mat.notebook_id,
+        type: mat.type,
+        title: mat.title,
+        content: mat.content,
+      });
+      newMat = created;
+    } catch (err) {
+      console.warn('Could not save material to cloud API, saving locally:', err);
+      newMat = {
+        ...mat,
+        id: crypto.randomUUID(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
+    updateMaterials((m) => [newMat, ...m]);
+    return newMat;
+  };
+
   useEffect(() => {
     if (!activeId) { setMessages([]); setFlashcards([]); setMaterials([]); return; }
     const msgs = loadLocalMessages(activeId);
     setMessages(msgs);
     setFlashcards([]);
-    setMaterials([]);
-  }, [activeId]);
+    loadMaterialsForNotebook(activeId);
+  }, [activeId, loadMaterialsForNotebook]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -466,57 +504,50 @@ export function AppShell() {
         };
 
         let savedMaterial = false;
-        let savedKind: string | null = null;        // parse flashcards and save as a deck
+        let savedKind: string | null = null;
+
+        // parse flashcards and save as a deck
         const parsed = parseFlashcards(acc);
         if (parsed.length > 0) {
           const deckContent: FlashcardDeckContent = { cards: parsed };
           const title = `Flashcard Deck ${new Date().toLocaleDateString()}`;
-          const newDeck: StudyMaterial = {
-            id: crypto.randomUUID(),
+          await persistMaterial({
             notebook_id: activeId,
             user_id: user?.id || '',
             type: 'flashcard_deck',
             title,
             content: deckContent,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          setMaterials((m) => [newDeck, ...m]); savedMaterial = true; savedKind = 'flashcard_deck';
+          });
+          savedMaterial = true; savedKind = 'flashcards';
         }
 
         // parse quiz
         const quizContent = parseQuiz(acc);
         if (quizContent) {
           const title = `Quiz ${new Date().toLocaleDateString()}`;
-          const newQuiz: StudyMaterial = {
-            id: crypto.randomUUID(),
+          await persistMaterial({
             notebook_id: activeId,
             user_id: user?.id || '',
             type: 'quiz',
             title,
             content: quizContent,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          setMaterials((m) => [newQuiz, ...m]); savedMaterial = true; savedKind = 'quiz';
+          });
+          savedMaterial = true; savedKind = 'quiz';
         }
 
         // save infographic (HTML output from infographic prompt)
-        if (!quizContent && currentKind === 'infographic' && isLikelyHtml(acc)) {
+        if (!quizContent && currentKind === 'infographic') {
           const infoContent = parseInfographic(acc);
           if (infoContent) {
             const title = `Infographic ${new Date().toLocaleDateString()}`;
-            const newMat: StudyMaterial = {
-              id: crypto.randomUUID(),
+            await persistMaterial({
               notebook_id: activeId,
               user_id: user?.id || '',
               type: 'infographic',
               title,
               content: infoContent,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            };
-            setMaterials((m) => [newMat, ...m]); savedMaterial = true;
+            });
+            savedMaterial = true; savedKind = 'infographic';
           }
         }
 
@@ -524,34 +555,28 @@ export function AppShell() {
         if (currentKind === 'assignment') {
           const assignContent = { text: acc };
           const title = `Completed Assignment ${new Date().toLocaleDateString()}`;
-          const newMat: StudyMaterial = {
-            id: crypto.randomUUID(),
+          await persistMaterial({
             notebook_id: activeId,
             user_id: user?.id || '',
             type: 'assignment',
             title,
             content: assignContent,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          setMaterials((m) => [newMat, ...m]); savedMaterial = true;
+          });
+          savedMaterial = true; savedKind = 'assignment';
         }
 
         // save study note (markdown output from note prompt)
         if (!quizContent && currentKind === 'note') {
           const noteContent = { html: renderMarkdown(acc) };
           const title = `Study Note ${new Date().toLocaleDateString()}`;
-          const newMat: StudyMaterial = {
-            id: crypto.randomUUID(),
+          await persistMaterial({
             notebook_id: activeId,
             user_id: user?.id || '',
             type: 'note',
             title,
             content: noteContent,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          setMaterials((m) => [newMat, ...m]); savedMaterial = true;
+          });
+          savedMaterial = true; savedKind = 'note';
         }
 
         // For auto-save quick prompts, show a short confirmation instead of the full output
@@ -635,11 +660,13 @@ export function AppShell() {
   };
 
   const renameMaterial = async (id: string, title: string) => {
-    setMaterials((m) => m.map((x) => (x.id === id ? { ...x, title } : x)));
+    updateMaterials((m) => m.map((x) => (x.id === id ? { ...x, title } : x)));
+    try { await api.updateMaterial(id, { title }); } catch (e) { console.warn('Could not rename material on cloud API:', e); }
   };
 
   const deleteMaterial = async (id: string) => {
-    setMaterials((m) => m.filter((x) => x.id !== id));
+    updateMaterials((m) => m.filter((x) => x.id !== id));
+    try { await api.deleteMaterial(id); } catch (e) { console.warn('Could not delete material from cloud API:', e); }
   };
 
   const editMaterial = async (id: string, title: string, content: string) => {
@@ -670,24 +697,22 @@ export function AppShell() {
       }
     }
 
-    setMaterials((m) => m.map((x) => (x.id === id ? { ...x, title: title || x.title, content: parsed as StudyMaterial['content'] } : x)));
+    const newTitle = title || mat.title;
+    updateMaterials((m) => m.map((x) => (x.id === id ? { ...x, title: newTitle, content: parsed as StudyMaterial['content'] } : x)));
+    try { await api.updateMaterial(id, { title: newTitle, content: parsed }); } catch (e) { console.warn('Could not update material on cloud API:', e); }
   };
 
   const saveResponse = async (msg: Message) => {
     if (!activeId) return;
     const savedContent: SavedContent = { text: msg.content };
     const title = `Saved ${new Date().toLocaleDateString()}`;
-    const newMat: StudyMaterial = {
-      id: crypto.randomUUID(),
+    await persistMaterial({
       notebook_id: activeId,
       user_id: user?.id || '',
       type: 'saved',
       title,
       content: savedContent,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    setMaterials((m) => [newMat, ...m]);
+    });
     setError('Saved to Study deck.');
     setTimeout(() => setError(null), 2000);
   };

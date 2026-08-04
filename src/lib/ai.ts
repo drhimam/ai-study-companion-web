@@ -98,18 +98,30 @@ export async function fetchYoutubeTranscript(url: string): Promise<{ title: stri
   return { title: url, content: `Transcript extracted from YouTube video at ${url}` };
 }
 
-export function buildQuizPrompt(topic: string, count = 5): string {
-  return `Generate a multiple choice practice quiz with ${count} questions on the topic: "${topic}".\n` +
+export function buildQuizPrompt(topic: string, countOrConfig: number | any = 5): string {
+  const count = typeof countOrConfig === 'number' ? countOrConfig : (countOrConfig?.questionCount || 5);
+  const difficulty = typeof countOrConfig === 'object' && countOrConfig?.difficulty ? ` Difficulty level: ${countOrConfig.difficulty}.` : '';
+  return `Generate a multiple choice practice quiz with ${count} questions on the topic: "${topic}".${difficulty}\n` +
     `Output ONLY a valid JSON object matching this structure:\n` +
     `{\n  "title": "${topic} Quiz",\n  "questions": [\n    {\n      "id": "q1",\n      "question": "...",\n      "options": ["A", "B", "C", "D"],\n      "correctIndex": 0,\n      "explanation": "..."\n    }\n  ]\n}\nNo markdown codeblocks or outer text.`;
 }
 
-export function buildInfographicPrompt(topic: string): string {
-  return `Create a visually rich, styled HTML document for an infographic summary on the topic: "${topic}". Use clean CSS styling with modern layout cards, clean typography, vibrant visual hierarchy, and bullet lists. Return raw HTML only.`;
+export function buildInfographicPrompt(topic: string, config?: any): string {
+  let styleInfo = '';
+  if (config) {
+    const details = [];
+    if (config.infographicType) details.push(`Type: ${config.infographicType}`);
+    if (config.pageSize) details.push(`Size: ${config.pageSize}`);
+    if (config.orientation) details.push(`Orientation: ${config.orientation}`);
+    if (config.colorPalette) details.push(`Color Palette: ${config.colorPalette}`);
+    if (config.instructions) details.push(`Custom Instructions: ${config.instructions}`);
+    if (details.length > 0) styleInfo = ` Specifications: (${details.join(', ')}).`;
+  }
+  return `Create a visually rich, styled HTML document for an infographic summary on the topic: "${topic}".${styleInfo} Use clean CSS styling with modern layout cards, clean typography, vibrant visual hierarchy, and bullet lists. Return raw HTML only without markdown fences.`;
 }
 
 export function buildAssignmentPrompt(topic: string): string {
-  return `Create a comprehensive academic study assignment on the topic: "${topic}". Include 3 parts: Part A (Key Terms & Concepts), Part B (Short Answer Practice Questions), and Part C (Sample Model Solutions).`;
+  return `Create a comprehensive academic study assignment on the topic: "${topic}". Include 3 parts: Part A (Key Terms & Concepts), Part B (Short Answer Practice Questions), and Part C (Sample Model Solutions). Use Markdown formatting.`;
 }
 
 export function buildNotePrompt(topic: string): string {
@@ -143,8 +155,9 @@ export function parseQuiz(text: string): QuizContent | null {
 }
 
 export function parseInfographic(text: string): InfographicContent | null {
-  if (isLikelyHtml(text)) {
-    return { html: text };
+  const cleaned = text.replace(/^```html\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/g, '').trim();
+  if (isLikelyHtml(cleaned)) {
+    return { html: cleaned };
   }
   return null;
 }
@@ -153,7 +166,7 @@ export function isLikelyHtml(text: string): boolean {
   return text.includes('<html') || text.includes('<div') || text.includes('<style') || text.includes('<!DOCTYPE html');
 }
 
-export const QUICK_PROMPTS: { label: string; icon: string; kind?: 'flashcards' | 'note' | 'quiz' | 'infographic'; template: (input: string) => string }[] = [
+export const QUICK_PROMPTS: { label: string; icon: string; kind?: 'flashcards' | 'note' | 'quiz' | 'infographic' | 'assignment'; template: (input: string) => string }[] = [
   {
     label: 'Solve',
     icon: '❓',
@@ -210,5 +223,17 @@ export const QUICK_PROMPTS: { label: string; icon: string; kind?: 'flashcards' |
     kind: 'note',
     template: (i) =>
       `Create a comprehensive, well-structured study note summarizing the following material. Use headings, key terms in bold, bullet lists, and clear explanations.\n\nContent:\n${i}`,
+  },
+  {
+    label: 'Generate Infographic',
+    icon: '📊',
+    kind: 'infographic',
+    template: (i) => buildInfographicPrompt(i),
+  },
+  {
+    label: 'Generate Assignment',
+    icon: '📋',
+    kind: 'assignment',
+    template: (i) => buildAssignmentPrompt(i),
   },
 ];

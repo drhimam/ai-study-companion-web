@@ -172,7 +172,68 @@ export default {
       }
     }
 
-    // 3. AI Proxy Endpoint
+    // 3. Study Materials Endpoints
+    if (url.pathname.startsWith("/api/materials")) {
+      if (!userId) return jsonError("Unauthorized", 401, cors);
+      const sql = neon(env.DATABASE_URL);
+
+      if (request.method === "GET") {
+        const notebookId = url.searchParams.get("notebook_id");
+        if (notebookId) {
+          const materials = await sql`
+            SELECT * FROM study_materials WHERE notebook_id = ${notebookId} AND user_id = ${userId} ORDER BY created_at DESC
+          `;
+          return jsonResponse(materials, 200, cors);
+        } else {
+          const materials = await sql`
+            SELECT * FROM study_materials WHERE user_id = ${userId} ORDER BY created_at DESC
+          `;
+          return jsonResponse(materials, 200, cors);
+        }
+      }
+
+      if (request.method === "POST") {
+        const body = await request.json() as { notebook_id: string; type: string; title: string; content: any };
+        const inserted = await sql`
+          INSERT INTO study_materials (notebook_id, user_id, type, title, content)
+          VALUES (${body.notebook_id}, ${userId}, ${body.type}, ${body.title}, ${JSON.stringify(body.content)})
+          RETURNING *
+        `;
+        return jsonResponse(inserted[0], 200, cors);
+      }
+
+      const pathParts = url.pathname.split("/").filter(Boolean);
+      const materialId = pathParts[2];
+
+      if (materialId && request.method === "PATCH") {
+        const body = await request.json() as { title?: string; content?: any };
+        let updated;
+        if (body.title !== undefined && body.content !== undefined) {
+          updated = await sql`
+            UPDATE study_materials SET title = ${body.title}, content = ${JSON.stringify(body.content)}, updated_at = now()
+            WHERE id = ${materialId} AND user_id = ${userId} RETURNING *
+          `;
+        } else if (body.title !== undefined) {
+          updated = await sql`
+            UPDATE study_materials SET title = ${body.title}, updated_at = now()
+            WHERE id = ${materialId} AND user_id = ${userId} RETURNING *
+          `;
+        } else if (body.content !== undefined) {
+          updated = await sql`
+            UPDATE study_materials SET content = ${JSON.stringify(body.content)}, updated_at = now()
+            WHERE id = ${materialId} AND user_id = ${userId} RETURNING *
+          `;
+        }
+        return jsonResponse(updated ? updated[0] : null, 200, cors);
+      }
+
+      if (materialId && request.method === "DELETE") {
+        await sql`DELETE FROM study_materials WHERE id = ${materialId} AND user_id = ${userId}`;
+        return jsonResponse({ success: true }, 200, cors);
+      }
+    }
+
+    // 4. AI Proxy Endpoint
     if (url.pathname === "/api/ai-proxy" && request.method === "POST") {
       if (!userId) return jsonError("Unauthorized", 401, cors);
       return handleAiProxy(request, env, cors);
