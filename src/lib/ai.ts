@@ -130,7 +130,8 @@ export function buildNotePrompt(topic: string): string {
 
 export function parseFlashcards(text: string): SimpleFlashcard[] {
   try {
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    const cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
     const parsed = JSON.parse(jsonMatch[0]);
     if (!Array.isArray(parsed)) return [];
@@ -142,7 +143,8 @@ export function parseFlashcards(text: string): SimpleFlashcard[] {
 
 export function parseQuiz(text: string): QuizContent | null {
   try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
     const parsed = JSON.parse(jsonMatch[0]);
     if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {

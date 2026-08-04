@@ -275,6 +275,16 @@ export function AppShell() {
 
   useEffect(() => { loadNotebooks(); }, [loadNotebooks]);
 
+  const updateMaterials = (updater: (prev: StudyMaterial[]) => StudyMaterial[]) => {
+    setMaterials((prev) => {
+      const next = updater(prev);
+      if (activeId) {
+        saveLocalMaterials(activeId, next);
+      }
+      return next;
+    });
+  };
+
   const loadMaterialsForNotebook = useCallback(async (notebookId: string) => {
     try {
       const cloudMats = await api.getMaterials(notebookId);
